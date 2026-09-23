@@ -68,8 +68,8 @@ const DUMP_COURSE_OFFSET = 15
 // end. There is no days-based counter in any frame.
 const DUMP_TUB_CLEAN_COUNT_OFFSET = 29
 // Soil, temp and spin, using the same SOIL/TEMP/SPIN indices as the 0xEC/0xEB record. Confirmed
-// against two panel photos: Normal/Warm/High/Normal soil reads 03/04/04, Heavy Duty/Cold/Medium/Light
-// soil reads 01/02/03. Other loads fit the same scales (Normal and Towels read Warm with Normal soil,
+// against three panel photos: Normal/Warm/High/Normal soil reads 03/04/04, Heavy Duty/Cold/Medium/Light
+// soil reads 01/02/03, Sanitary/Extra Hot/High/Normal soil reads 03/07/04. Other loads fit the same scales (Normal and Towels read Warm with Normal soil,
 // Rinse+Spin reads Cold with no soil, Tub Clean reads neither). 0x00 means "not applicable": soil
 // clears when Rinsing starts and temp when Spinning starts, while spin holds for the whole cycle.
 const DUMP_SOIL_OFFSET = 17
@@ -170,6 +170,7 @@ const COURSE = Enum.of({
 // published as its raw hex code so it can be identified from HA. Also seen, course unrecorded: 0x10
 // (an 18-minute cycle that went straight to Rinsing).
 const DUMP_COURSE = Enum.of({
+    Sanitary: 0x02,
     Normal: 0x06,
     'Heavy Duty': 0x07,
     'Tub Clean': 0x0d,
