@@ -20,6 +20,9 @@ import log from '@/util/logging'
 // `default_entity_id` so the entity_id is deterministic (`sensor.lg_dishwasher_*` /
 // `binary_sensor.lg_dishwasher_*`) instead of being slugified from the English name.
 
+// 0x32 0xec + 26-byte prior record + 26-byte current record
+const EC_FRAME_LEN = 54
+
 export default class Device extends AABBDevice {
     constructor(HA: Connection, thinq: Thinq2Device, meta: Metadata) {
         super(HA, thinq)
@@ -107,6 +110,22 @@ export default class Device extends AABBDevice {
                         name: 'Energy saver',
                         icon: 'mdi:leaf',
                     },
+                    half_load: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-half_load',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_half_load',
+                        state_topic: '$this/half_load',
+                        name: 'Half load',
+                        icon: 'mdi:tray-alert',
+                    },
+                    extra_dry: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-extra_dry',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_extra_dry',
+                        state_topic: '$this/extra_dry',
+                        name: 'Extra dry',
+                        icon: 'mdi:heat-wave',
+                    },
                 },
             }),
         )
@@ -134,15 +153,20 @@ export default class Device extends AABBDevice {
     //   [5]/[6]  initial time   (hour, minute)   e.g. 03 05 = 3:05 (Intensive)
     //   [7]      course  0x05=Eco, 0x01=Auto, 0x02=Intensive (clears to 0x00 at cycle end) —
     //                    verified 2026-09-18/19 across Eco, Auto and Intensive washes.
+    //                    0x03=Delicate — verified 2026-09-23 on an LDT54788D (panel photo).
     //   [9]/[10] remaining time (hour, minute)   e.g. 02 35 = 2:53, 1/min countdown
     //   [13]     status bitfield: bit 3 (0x08) = rinse aid refill (most likely; the fork this
     //            was adapted from called it "salt refill" — unlikely on a US model), bit 1
     //            (0x02) = door open (Auto Open Dry; the cloud does NOT report this — our
     //            superset).
     //   [14]     options bitfield: bit 1 (0x02) = energy saver — verified 2026-09-18.
+    //            bit 6 (0x40) = half load, bit 2 (0x04) = extra dry — verified 2026-09-23: on a
+    //            Delicate course, selecting Half Load set 0x40 and cut the estimate 1:54 -> 1:43,
+    //            then Extra Dry set 0x04 and raised it to 2:03 (both lamps lit in the panel photo).
+    //            A Heavy course read 0x18; bits 0x08/0x10 are still unidentified.
     //            Like the course byte, it clears to 0x00 at cycle end (state 0x04/0x05).
-    // Still TODO (need more washes/options): other option bits (dual_zone/half_load/steam/
-    // high_temp/extra_dry/...), error codes.
+    // Still TODO (need more washes/options): other option bits (dual_zone/steam/high_temp/...),
+    // error codes.
     processAABB(buf: Buffer) {
         if (buf[0] !== 0x32 || (buf[1] !== 0xeb && buf[1] !== 0xec)) {
             log('D30', 'unrecognized frame', buf.toString('hex'))
@@ -153,6 +177,12 @@ export default class Device extends AABBDevice {
         const base = buf[1] === 0xec ? 28 : 2
         if (buf.length < base + 26) {
             log('D30', 'short frame', buf.toString('hex'))
+            return
+        }
+        // A 194-byte 0xec was seen once, at cycle end, next to the 0xe1 summary; it doesn't follow
+        // the two-record layout (reading it as one briefly reported Off with a zero initial time).
+        if (buf[1] === 0xec && buf.length !== EC_FRAME_LEN) {
+            log('D30', 'unexpected 0xec length', buf.toString('hex'))
             return
         }
         const state = buf[base + 2]
@@ -191,7 +221,7 @@ export default class Device extends AABBDevice {
             0x06: 'Night Dry',
             0x00: '-',
         }
-        const COURSES: Record<number, string> = { 0x05: 'Eco', 0x01: 'Auto', 0x02: 'Intensive' }
+        const COURSES: Record<number, string> = { 0x05: 'Eco', 0x01: 'Auto', 0x02: 'Intensive', 0x03: 'Delicate' }
         // run_state = granular machine state; process_state = phase.
         this.publishProperty('run_state', STATES[state] ?? String(state))
         this.publishProperty('process_state', PROCESS[process] ?? String(process))
@@ -210,6 +240,8 @@ export default class Device extends AABBDevice {
         // Options bitfield clears at cycle end like the course byte; gate on
         // active state so the entity reads OFF once the cycle finishes.
         this.publishProperty('energy_saver', active && optionBits & 0x02 ? 'ON' : 'OFF')
+        this.publishProperty('half_load', active && optionBits & 0x40 ? 'ON' : 'OFF')
+        this.publishProperty('extra_dry', active && optionBits & 0x04 ? 'ON' : 'OFF')
         this.publishProperty('rinse_refill', statusBits & 0x08 ? 'ON' : 'OFF')
         this.publishProperty('door_open', statusBits & 0x02 ? 'ON' : 'OFF')
     }

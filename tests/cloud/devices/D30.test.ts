@@ -68,6 +68,29 @@ const SAMPLE_EC_NIGHT_DRY = buf(
     'AA3A32EC0018050500030E020000010000F80002000000000000000000040018020600030E020000010000F80002000000000000000000043DBB',
 )
 
+// Second capture (2026-09-23): Delicate course, Half Load then Extra Dry selected before start.
+// Half Load: option bit 0x40, estimate 1:54 -> 1:43.
+const SAMPLE_EC_HALF_LOAD = buf(
+    'AA3A32EC00180100000136030001360000F20002000000000000000000040818010000012B0300012B0000F24002000000000000000000046DBB',
+)
+// Extra Dry added: option bits 0x44, estimate 1:43 -> 2:03.
+const SAMPLE_EC_HALF_LOAD_EXTRA_DRY = buf(
+    'AA3A32EC0818010000012B0300012B0000F240020000000000000000000400180100000203030002030000F24402000000000000000000044DBB',
+)
+// Started: Running / Washing, door closed, options unchanged.
+const SAMPLE_EC_DELICATE_WASHING = buf(
+    'AA3A32EC00180100000203030002030000F244020000000000000000000401180202000203030002030000F04402000000000000000000049DBB',
+)
+// Post-cycle Night Dry (process 0x06): option bits cleared, running OFF.
+const SAMPLE_EC_DELICATE_NIGHT_DRY = buf(
+    'AA3A32EC00180505000203030000010000F000020000000000000000000400180206000203030000010000F000020000000000000000000417BB',
+)
+
+// Malformed 194-byte 0xEC sent once at cycle end alongside the 0xE1 summary — must be ignored.
+const SAMPLE_EC_MALFORMED_LONG = buf(
+    'AAC632EC00180505000203030000010000F0000200000000000000000004AEBB000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003180505000203030000010000F000020000000000000000000445030001040000000043002902C500000000001000050436C0102002FF0000000000142E2223384631000001D1000003018600000000000000000000004D14242C180207C10276BB',
+)
+
 // ── Synthetic edge cases ──────────────────────────────────────────────────────
 
 // state=0x03, process=0x09: both unmapped, must fall back to the numeric string.
@@ -113,6 +136,8 @@ describe(MODEL_ID, () => {
             'rinse_refill',
             'door_open',
             'energy_saver',
+            'half_load',
+            'extra_dry',
         ]) {
             assert.ok(components[c], `component ${c} present`)
         }
@@ -128,11 +153,9 @@ describe(MODEL_ID, () => {
             'auto_door',
             'child_lock',
             'dual_zone',
-            'extra_dry',
             'high_temp',
             'night_dry',
             'steam',
-            'half_load',
             'tub_clean_counter',
             'delay_start',
             'remote_start',
@@ -180,6 +203,52 @@ describe(MODEL_ID, () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EB_ENERGY_SAVER)
         assert.equal(ha.devices[DEVICE_ID].properties.energy_saver, 'ON')
+    })
+
+    test('Half Load and Extra Dry option bits decode on a Delicate course (real captures)', () => {
+        const { ha, thinq } = makeDevice()
+        const props = ha.devices[DEVICE_ID].properties
+
+        thinq.emit('data', SAMPLE_EC_HALF_LOAD)
+        assert.equal(props.run_state, 'Starting')
+        assert.equal(props.current_course, 'Delicate')
+        assert.equal(props.initial_time, 103)
+        assert.equal(props.half_load, 'ON')
+        assert.equal(props.extra_dry, 'OFF')
+
+        thinq.emit('data', SAMPLE_EC_HALF_LOAD_EXTRA_DRY)
+        assert.equal(props.initial_time, 123)
+        assert.equal(props.half_load, 'ON')
+        assert.equal(props.extra_dry, 'ON')
+        assert.equal(props.door_open, 'ON')
+
+        thinq.emit('data', SAMPLE_EC_DELICATE_WASHING)
+        assert.equal(props.run_state, 'Running')
+        assert.equal(props.process_state, 'Washing')
+        assert.equal(props.door_open, 'OFF')
+        assert.equal(props.half_load, 'ON')
+        assert.equal(props.extra_dry, 'ON')
+        assert.equal(props.energy_saver, 'OFF')
+        assert.equal(props.rinse_refill, 'OFF')
+
+        thinq.emit('data', SAMPLE_EC_DELICATE_NIGHT_DRY)
+        assert.equal(props.process_state, 'Night Dry')
+        assert.equal(props.running, 'OFF')
+        assert.equal(props.half_load, 'OFF')
+        assert.equal(props.extra_dry, 'OFF')
+    })
+
+    test('malformed long 0xEC at cycle end is ignored and logged (real capture)', () => {
+        const { ha, thinq } = makeDevice()
+        const cap = captureLog()
+        try {
+            thinq.emit('data', SAMPLE_EC_MALFORMED_LONG)
+            assert.equal(ha.devices[DEVICE_ID].properties.run_state, undefined)
+            assert.equal(cap.calls.length, 1)
+            assert.equal(cap.calls[0].arguments[2], 'unexpected 0xec length')
+        } finally {
+            cap.restore()
+        }
     })
 
     test('0xEC Off publishes Off/none, running OFF, no course (real capture)', () => {
