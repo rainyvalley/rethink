@@ -95,9 +95,14 @@ const HB_START = buf('AA09207200C9005BBB')
 const HB_TRANSIENT_ZERO = buf('AA09207200000010BB')
 const HB_STOP = buf('AA09207200C80058BB')
 
-// Real mystery frames, currently undecoded: 0xD8 (by far the most frequent frame type in the
-// capture, ~80 over 2 days) and an unidentified 0x7F type (~10 over 2 days).
-const MYSTERY_D8 = buf('AA0720D800FCBB')
+// 0xD8 washes-since-Tub-Clean bursts: power-on placeholder 00, then the real count; after a load the
+// updated count; after the Tub Clean, 00.
+const COUNT_POWER_ON_PLACEHOLDER = buf('AA0720D800FCBB')
+const COUNT_8 = buf('AA0720D808E4BB')
+const COUNT_7_AFTER_LOAD = buf('AA0720D807E5BB')
+const COUNT_RESET_AFTER_TUB_CLEAN = buf('AA0720D800FCBB')
+
+// Real mystery frame, currently undecoded: an unidentified 0x7F type (~10 over 2 days).
 const MYSTERY_7F = buf('AA09207F010040C6BB')
 
 function makeDevice() {
@@ -229,6 +234,36 @@ describe(MODEL_ID, () => {
         assert.equal(props.power, 'ON')
     })
 
+    test('0xD8 count: power-on 00 ignored, reset to 0 after a Tub Clean (real captures)', () => {
+        const { ha, thinq } = makeDevice()
+        const p = ha.devices[DEVICE_ID].properties
+
+        // power-on: placeholder 00 burst, then the real count
+        thinq.emit('data', COUNT_POWER_ON_PLACEHOLDER)
+        assert.equal(p.tub_clean_count, undefined)
+        thinq.emit('data', COUNT_8)
+        assert.equal(p.tub_clean_count, 8)
+        thinq.emit('data', COUNT_POWER_ON_PLACEHOLDER)
+        assert.equal(p.tub_clean_count, 8)
+
+        // Tub Clean ends: the end-of-cycle 0xBD still reports the pre-cycle 8, the following 0xD8 resets it
+        thinq.emit('data', TC_BD_CYCLE_END)
+        assert.equal(p.tub_clean_count, 8)
+        thinq.emit('data', COUNT_RESET_AFTER_TUB_CLEAN)
+        assert.equal(p.tub_clean_count, 0)
+        // the rest of the burst, and later power-on placeholders, don't disturb it
+        thinq.emit('data', COUNT_RESET_AFTER_TUB_CLEAN)
+        assert.equal(p.tub_clean_count, 0)
+    })
+
+    test('0xD8 count after an ordinary load carries the incremented value (real capture)', () => {
+        const { ha, thinq } = makeDevice()
+        thinq.emit('data', BD_SPINNING_LARGE) // load 1 end-of-cycle, count 6 at start
+        assert.equal(ha.devices[DEVICE_ID].properties.tub_clean_count, 6)
+        thinq.emit('data', COUNT_7_AFTER_LOAD)
+        assert.equal(ha.devices[DEVICE_ID].properties.tub_clean_count, 7)
+    })
+
     // ── Ignored packet tests ──────────────────────────────────────────────────
 
     test('0xCD/0xBD frames too short to hold phase/remaining/initial are ignored', () => {
@@ -246,20 +281,19 @@ describe(MODEL_ID, () => {
 
     // ── Logging (for future status-code hunting) ────────────────────────────────
 
-    test('undecoded frame types (0xD8, 0x7F) are logged (real captures)', () => {
+    test('undecoded frame types (0x7F) are logged, 0xD8 is not (real captures)', () => {
         const { thinq } = makeDevice()
         const cap = captureLog()
         try {
-            thinq.emit('data', MYSTERY_D8)
+            thinq.emit('data', COUNT_POWER_ON_PLACEHOLDER)
             thinq.emit('data', MYSTERY_7F)
-            assert.equal(cap.calls.length, 2)
+            assert.equal(cap.calls.length, 1)
             for (const call of cap.calls) {
                 const [, topic, message] = call.arguments
                 assert.equal(topic, 'F3M2CYK__')
                 assert.equal(message, 'unrecognized frame')
             }
-            assert.equal(cap.calls[0].arguments[3], MYSTERY_D8.subarray(2, -2).toString('hex'))
-            assert.equal(cap.calls[1].arguments[3], MYSTERY_7F.subarray(2, -2).toString('hex'))
+            assert.equal(cap.calls[0].arguments[3], MYSTERY_7F.subarray(2, -2).toString('hex'))
         } finally {
             cap.restore()
         }

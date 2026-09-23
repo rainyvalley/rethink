@@ -23,9 +23,9 @@ import log from '@/util/logging'
 //               unpublished. A 0xBD with event byte 0x03 (476 bytes) is sent once at cycle end.
 //   0x72        run heartbeat, buf[3]: 0xC9 = started/resumed, 0xC8 = stopped (cycle end), with a
 //               transient 0x00 just before the 0xC8. Drives `power` and the end-of-cycle state.
-//   0xD8        1-byte counter (same value as the 0xCD/0xBD washes-since-Tub-Clean byte), sent in
-//               bursts at power-on (preceded by a burst of 0x00) and at cycle end — not decoded,
-//               since the power-on 0x00 burst would briefly zero the count.
+//   0xD8        washes since the last Tub Clean (same counter as the 0xCD/0xBD byte), sent in bursts
+//               of ~10: at power-on a burst of 0x00 followed by the real count, and right after the
+//               end-of-cycle 0xBD a burst with the updated count (00 after a Tub Clean).
 // All offsets below are live-verified: captured real traffic via the rethink-agent MCP tools while
 // driving the physical washer (dial browsing, single-variable settings toggles, full wash cycles,
 // pause/resume, remote start/pause/power-off from the LG app) and correlating each byte change against
@@ -63,8 +63,14 @@ const DUMP_TOTAL_OFFSET = 11 // [hour][minute]
 // map below. Reads 0x00 in the very first 0xBD of a cycle before the machine commits to one.
 const DUMP_COURSE_OFFSET = 15
 // Washes since the last Tub Clean: read 06 during load 1, 07 after it, 08 after load 2, and 00
-// straight after a Tub Clean. The value is the count as of cycle start; it increments at cycle end.
+// straight after a Tub Clean. The 0xCD/0xBD value is the count as of cycle start; the updated count
+// arrives in the 0xD8 burst after the cycle ends. There is no days-based counter in any frame.
 const DUMP_TUB_CLEAN_COUNT_OFFSET = 29
+
+// 0xD8: buf[2] = washes since the last Tub Clean. The power-on burst of 0x00 is a placeholder, so a
+// zero is only taken when it directly follows the end of a cycle (i.e. a Tub Clean just finished).
+const COUNTER_FRAME_TYPE = 0xd8
+const COUNTER_OFFSET = 2
 
 const HEARTBEAT_FRAME_TYPE = 0x72
 const HEARTBEAT_STATE_OFFSET = 3
@@ -184,6 +190,9 @@ const TEMP = Enum.of({
 })
 
 export default class Device extends AABBDevice {
+    // set by the end-of-cycle 0xBD; the next 0xD8 carries the updated washes-since-Tub-Clean count
+    private countFollowsCycleEnd = false
+
     constructor(HA: Connection, thinq: Thinq2Device, meta: Metadata) {
         super(HA, thinq)
         this.setConfig(
@@ -264,8 +273,9 @@ export default class Device extends AABBDevice {
         if (buf[1] === CD_FRAME_TYPE) return this.processDump(buf, 0)
         if (buf[1] === BD_FRAME_TYPE) return this.processDump(buf, BD_SHIFT)
         if (buf[1] === HEARTBEAT_FRAME_TYPE && buf.length > HEARTBEAT_STATE_OFFSET) return this.processHeartbeat(buf)
-        // 0x31 (serial), 0xD8 (counter burst), 0xE2 (end-of-cycle summary) and anything else not yet
-        // decoded land here so they show up in the logs for future status-code hunting.
+        if (buf[1] === COUNTER_FRAME_TYPE && buf.length > COUNTER_OFFSET) return this.processCounter(buf)
+        // 0x31 (serial), 0xE2 (end-of-cycle summary) and anything else not yet decoded land here so
+        // they show up in the logs for future status-code hunting.
         log('F3M2CYK__', 'unrecognized frame', buf.toString('hex'))
     }
 
@@ -284,6 +294,7 @@ export default class Device extends AABBDevice {
         // one load it arrived after the 0x72 stop heartbeat, so treat it as the end of the cycle.
         const cycleEnd = shift === BD_SHIFT && buf[BD_EVENT_OFFSET] === BD_EVENT_CYCLE_END
         const total = hm(DUMP_TOTAL_OFFSET)
+        if (cycleEnd) this.countFollowsCycleEnd = true
 
         if (phase === PHASE_OFF) {
             this.publishProperty('power', 'OFF')
@@ -308,6 +319,12 @@ export default class Device extends AABBDevice {
             this.publishProperty('course', DUMP_COURSE.map(course) ?? `0x${course.toString(16).padStart(2, '0')}`)
         }
         this.publishProperty('tub_clean_count', at(DUMP_TUB_CLEAN_COUNT_OFFSET))
+    }
+
+    private processCounter(buf: Buffer) {
+        const count = buf[COUNTER_OFFSET]
+        if (count !== 0 || this.countFollowsCycleEnd) this.publishProperty('tub_clean_count', count)
+        this.countFollowsCycleEnd = false
     }
 
     // 0x72: 0xC9 when a cycle starts/resumes, 0xC8 when it stops. The transient 0x00 that precedes
