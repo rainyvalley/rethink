@@ -70,10 +70,10 @@ const t2deviceTypes: Record<string, T2Factory> = {
     'F_VB_F___W.B_2QEUK': F_VB_F___W_B_2QEUK, // LG CV74J7S2QA washer/dryer combo
     T1789EFH_F, // LG WT7300CW top-loading washer
     RV13U6AM8W_D_US_WIFI, // LG DLE7300WE dryer
-    RV13D5JSD_D_US, // alias test of RV13U6AM8W
+    RV13D5JSD_D_US, // based on RV13U6AM8W_D_US_WIFI
     F3L2CYU__, // LG front-load washer
-    F3M2CYK__, // alias test of F3L2CYU__
-    D30, // alias test of fork D0211 dishwasher
+    F3M2CYK__, // based on F3L2CYU__
+    D30, // based on the D0211 handler from Stinocon/rethink-dishwasher
     F3L7CYK5W_US_WIFI, // LG front-load washer, same record layout as F3L2CYU__ but a different course table and two extra option bits
     RV13B6BSD_D_US_WIFI, // LG electric dryer
     RV13B6ES_D_US_WIFI, // LG electric dryer, same frame layout as RV13B6BSD but Wrinkle Care sits in a different bitfield
