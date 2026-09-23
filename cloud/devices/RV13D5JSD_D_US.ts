@@ -8,29 +8,48 @@ import { Enum } from '@/util/enum'
 import log from '@/util/logging'
 
 // LG dryer — matched on modelId "RV13D5JSD_D_US". This handler was originally written for the
-// 0xEC/0xEB status records below (copied from RV13U6AM8W_D_US_WIFI.ts), but a ~2-day capture of this
-// specific appliance's real traffic showed it never sends those: only 17 frames total, all 0x31
-// (serial, once per reconnect), 0x72 (heartbeat) and 0xE2 (end-of-cycle summary, repeated ~10x). The
-// 0xEC/0xEB path is kept as-is in case another unit of this model does send them.
+// 0xEC/0xEB status records below (copied from RV13U6AM8W_D_US_WIFI.ts), but captures of this specific
+// appliance's real traffic (three days, two cycles) showed it never sends those: only 0x31 (serial,
+// once per reconnect), 0x72 (heartbeat) and 0xE2 (end-of-cycle summary, repeated ~10x). The 0xEC/0xEB
+// path is kept as-is in case another unit of this model does send them.
 //   0x72 (5 bytes: 30 72 00 <XX> 00) — buf[3] flips between 0xC9 (running/resumed) and 0xC8
 //        (paused/stopped); a single transient 0x00 was observed immediately before a 0xC8 at cycle
-//        end. `power` is driven from this.
-//   0xE2 (31 bytes, end-of-cycle only) — buf[4] confirmed as the phase byte (0x32/Drying, matching
-//        the STATUS map above). The physical panel for this capture read Medium temp / Normal dry
-//        level, and buf[6], buf[8] and buf[9] are all candidates for those two fields — but all three
-//        happen to read 0x03 in the only capture available (Medium and Normal both map to 0x03), so
-//        there's no way to tell which byte is which from this data. TODO: decode temp/dry_level from
-//        0xE2 once a capture with differing temp and dry-level values disambiguates the offsets.
+//        end. `power` and `status` (Running/Off) are driven from this.
+//   0xE2 (31 bytes, end-of-cycle only) — buf[2..] follows the same record layout as the 0xEC/0xEB
+//        record processRecord() reads, with [hour][minute] time pairs where that record has a single
+//        minute byte. Confirmed against two cycles and their panel photos:
+//          rec[2]     phase at the end (0x32/Drying both times)
+//          rec[3..4]  cycle time, h:m — 1:03 and 0:10 (both matched the display at start)
+//          rec[5..6]  same value as rec[3..4] in both captures; not published
+//          rec[7]     cycle — 0x03 on a load with Normal dry level; 0x15 on a TurboSteam cycle
+//                     (Steam Fresh or Steam Sanitary, unconfirmed), so 0x15 is published as its
+//                     raw code
+//          rec[9]     dry level — 0x03/Normal and 0x00/none (steam cycle, no dry-level lamp lit)
+//          rec[10]    temp — 0x04/Med High both times (the unlabeled lamp between High and Medium)
+//        These are published as the "last cycle" settings, since this dryer only reports them once
+//        the cycle is over.
 // Live remaining time needs the appliance to be sending 0xEC/0xEB/similar status records with a
-// remaining-time field, which this capture never showed; the LG app likely triggers that by making
+// remaining-time field, which these captures never showed; the LG app likely triggers that by making
 // the cloud request a status stream while it's open. No such periodic re-request exists anywhere in
 // this codebase for the AABB device family (grepped for setInterval/setTimeout in cloud/devices/ —
 // the only matches are the unrelated TLV/ThinQ1 and RAC_056905_WW polling code). Several sibling AABB
 // washer/dryer models (F3L7CYK5W_US_WIFI, RV13B6ES_D_US_WIFI) and D30 send a one-time
 // `F0ED1121010000001800` status-push request from `start()` on every (re)connect; this file has no
 // `start()` override at all, so it doesn't even request that one-time push. Not added here since it's
-// a live command to real hardware and wasn't captured/verified for this specific model — flagged for
-// the user to decide on.
+// a live command to real hardware and wasn't captured/verified for this specific model.
+
+const HEARTBEAT_STATE_OFFSET = 3
+const HEARTBEAT_RUNNING = 0xc9
+
+const SUMMARY_FRAME_TYPE = 0xe2
+const SUMMARY_FRAME_LEN = 31
+const SUMMARY_RECORD_OFFSET = 2
+// offsets relative to SUMMARY_RECORD_OFFSET, matching processRecord()'s record layout
+const SUMMARY_TIME_HOUR = 3
+const SUMMARY_TIME_MIN = 4
+const SUMMARY_CYCLE = 7
+const SUMMARY_DRY_LEVEL = 9
+const SUMMARY_TEMP = 10
 
 const STATUS = Enum.of({
     Off: 0x00,
@@ -83,16 +102,8 @@ export default class Device extends AABBDevice {
                         state_topic: '$this/status',
                         name: 'Status',
                         icon: 'mdi:state-machine',
-                        device_class: 'enum',
-                        options: STATUS.options,
-                    },
-                    remaining_time: {
-                        platform: 'sensor',
-                        unique_id: '$deviceid-remaining_time',
-                        state_topic: '$this/remaining_time',
-                        name: 'Remaining time',
-                        device_class: 'duration',
-                        unit_of_measurement: 'min',
+                        // free-text (NOT device_class:enum): the 0x72 heartbeat publishes Running/Off,
+                        // which aren't in the 0xEC/0xEB STATUS map.
                     },
                     power: {
                         platform: 'binary_sensor',
@@ -102,27 +113,28 @@ export default class Device extends AABBDevice {
                         icon: 'mdi:tumble-dryer',
                         device_class: 'running',
                     },
-                    drum_running: {
-                        platform: 'binary_sensor',
-                        unique_id: '$deviceid-drum_running',
-                        state_topic: '$this/drum_running',
-                        name: 'Drum running',
-                        icon: 'mdi:rotate-3d-variant',
-                    },
                     cycle: {
                         platform: 'sensor',
                         unique_id: '$deviceid-cycle',
                         state_topic: '$this/cycle',
-                        name: 'Cycle',
+                        name: 'Last cycle',
                         icon: 'mdi:tumble-dryer',
-                        device_class: 'enum',
-                        options: CYCLES.options,
+                        // free-text: unmapped cycle codes are published as their raw hex value
+                    },
+                    cycle_time: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-cycle_time',
+                        state_topic: '$this/cycle_time',
+                        name: 'Last cycle time',
+                        icon: 'mdi:timer-sand',
+                        device_class: 'duration',
+                        unit_of_measurement: 'min',
                     },
                     temp: {
                         platform: 'sensor',
                         unique_id: '$deviceid-temp',
                         state_topic: '$this/temp',
-                        name: 'Temperature',
+                        name: 'Last cycle temperature',
                         icon: 'mdi:thermometer',
                         device_class: 'enum',
                         options: TEMPS.options,
@@ -131,14 +143,21 @@ export default class Device extends AABBDevice {
                         platform: 'sensor',
                         unique_id: '$deviceid-dry_level',
                         state_topic: '$this/dry_level',
-                        name: 'Dry level',
+                        name: 'Last cycle dry level',
                         icon: 'mdi:water-percent',
                         device_class: 'enum',
                         options: DRY_LEVELS.options,
                     },
+                    // remaining_time and drum_running are only decoded from 0xEC/0xEB frames, which
+                    // this model hasn't been seen sending; they're left out of discovery so they don't
+                    // sit at Unknown in HA.
                 },
             }),
         )
+    }
+
+    private cycleName(code: number) {
+        return CYCLES.map(code) ?? `0x${code.toString(16).padStart(2, '0')}`
     }
 
     private processRecord(rec: Buffer) {
@@ -149,7 +168,7 @@ export default class Device extends AABBDevice {
         this.publishProperty('remaining_time', mins)
         this.publishProperty('power', phase !== 0 ? 'ON' : 'OFF')
         this.publishProperty('drum_running', rec[17] === 0xa9 ? 'ON' : 'OFF')
-        this.publishProperty('cycle', CYCLES.map(rec[7]))
+        this.publishProperty('cycle', this.cycleName(rec[7]))
         this.publishProperty('temp', TEMPS.map(rec[10]))
         this.publishProperty('dry_level', DRY_LEVELS.map(rec[9]))
     }
@@ -166,16 +185,29 @@ export default class Device extends AABBDevice {
         } else if (buf[1] === 0xeb && buf.length === 31) {
             // 0xEB: single record sent after reconnect
             this.processRecord(buf.subarray(2, 31))
-        } else if (buf[1] === 0x72 && buf.length >= 4) {
+        } else if (buf[1] === 0x72 && buf.length > HEARTBEAT_STATE_OFFSET) {
             this.processHeartbeat(buf)
+        } else if (buf[1] === SUMMARY_FRAME_TYPE && buf.length === SUMMARY_FRAME_LEN) {
+            this.processSummary(buf.subarray(SUMMARY_RECORD_OFFSET))
         } else {
-            // 0x31 (serial), 0xE2 (end-of-cycle summary), any length-mismatched EC/EB/0x72 and
-            // anything else not yet decoded land here — see the header comment for 0xE2's status.
+            // 0x31 (serial), any length-mismatched EC/EB/E2/0x72 and anything else not yet decoded
+            // land here.
             log('RV13D5JSD_D_US', 'unrecognized frame', buf.toString('hex'))
         }
     }
 
     private processHeartbeat(buf: Buffer) {
-        this.publishProperty('power', buf[3] === 0xc9 ? 'ON' : 'OFF')
+        const running = buf[HEARTBEAT_STATE_OFFSET] === HEARTBEAT_RUNNING
+        this.publishProperty('power', running ? 'ON' : 'OFF')
+        this.publishProperty('status', running ? 'Running' : 'Off')
+    }
+
+    // 0xE2 end-of-cycle summary: the settings of the cycle that just finished. Phase is deliberately
+    // not published — it still reads Drying, but the 0x72 heartbeat has already reported Off.
+    private processSummary(rec: Buffer) {
+        this.publishProperty('cycle', this.cycleName(rec[SUMMARY_CYCLE]))
+        this.publishProperty('cycle_time', rec[SUMMARY_TIME_HOUR] * 60 + rec[SUMMARY_TIME_MIN])
+        this.publishProperty('temp', TEMPS.map(rec[SUMMARY_TEMP]))
+        this.publishProperty('dry_level', DRY_LEVELS.map(rec[SUMMARY_DRY_LEVEL]))
     }
 }
