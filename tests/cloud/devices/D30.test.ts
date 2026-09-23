@@ -19,10 +19,10 @@ const META: Metadata = { modelId: MODEL_ID, modelName: 'LDT54788D', swVersion: '
 
 // ── Real captures — 0xEB (single record) ─────────────────────────────────────
 
-// Starting, Intensive selected, 3:14 initial/remaining, door open, rinse aid ok.
+// Starting, Heavy selected, 3:14 initial/remaining, door open, rinse aid ok.
 const SAMPLE_EB_STARTING = buf('AA2032EB0018010000030E0200030E0000F218020000000000000000000461BB')
 
-// Running / Washing, Intensive, 3:14 initial/remaining, door closed, rinse aid ok.
+// Running / Washing, Heavy, 3:14 initial/remaining, door closed, rinse aid ok.
 const SAMPLE_EB_RUNNING_WASHING = buf('AA2032EB0018020200030E0200030E0000F018020000000000000000000460BB')
 
 // Same as SAMPLE_EB_RUNNING_WASHING but with the energy-saver option bit (0x02) also set.
@@ -52,18 +52,18 @@ const SAMPLE_EC_COMPLETE_COMPLETE = buf(
     'AA3A32EC0018020400030E020000010000F81802000000000000000000040018050500030E020000010000F80002000000000000000000042BBB',
 )
 
-// Running / Rinsing, Intensive, remaining 1:32.
+// Running / Rinsing, Heavy, remaining 1:32.
 const SAMPLE_EC_RUNNING_RINSING = buf(
     'AA3A32EC0018020200030E020001200000F01802000000000000000000040018020300030E020001200000F0180200000000000000000004EABB',
 )
 
-// Running / Drying, Intensive, remaining 0:33, rinse aid low.
+// Running / Drying, Heavy, remaining 0:33, rinse aid low.
 const SAMPLE_EC_RUNNING_DRYING = buf(
     'AA3A32EC0018020300030E020000210000F81802000000000000000000040018020400030E020000210000F818020000000000000000000484BB',
 )
 
 // Running (state stays 0x02) / Night Dry (process 0x06), ~8.5h post-cycle: remaining frozen
-// at 0:01, course still reported (0x02 Intensive), rinse aid low.
+// at 0:01, course still reported (0x02 Heavy), rinse aid low.
 const SAMPLE_EC_NIGHT_DRY = buf(
     'AA3A32EC0018050500030E020000010000F80002000000000000000000040018020600030E020000010000F80002000000000000000000043DBB',
 )
@@ -86,6 +86,18 @@ const SAMPLE_EC_DELICATE_NIGHT_DRY = buf(
     'AA3A32EC00180505000203030000010000F000020000000000000000000400180206000203030000010000F000020000000000000000000417BB',
 )
 
+// Third capture (2026-09-23 22:10Z): Normal course, High Temp only (panel photo), 2:50 estimate.
+const SAMPLE_EC_NORMAL_HIGH_TEMP_SELECTING = buf(
+    'AA3A32EC0018010000023205000232000072080200000000000000000004081801000002320500023200007208020000000000000000000443BB',
+)
+// State 0x03 for 24 s just after start, door-open bit set.
+const SAMPLE_EC_NORMAL_PAUSED = buf(
+    'AA3A32EC0018020200023205000232000070080200000000000000000004001803020002320500023200007208020000000000000000000446BB',
+)
+const SAMPLE_EC_NORMAL_RESUMED = buf(
+    'AA3A32EC0018030200023205000232000072080200000000000000000004001802020002320500023200007008020000000000000000000446BB',
+)
+
 // Malformed 194-byte 0xEC sent once at cycle end alongside the 0xE1 summary — must be ignored.
 const SAMPLE_EC_MALFORMED_LONG = buf(
     'AAC632EC00180505000203030000010000F0000200000000000000000004AEBB000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003180505000203030000010000F000020000000000000000000445030001040000000043002902C500000000001000050436C0102002FF0000000000142E2223384631000001D1000003018600000000000000000000004D14242C180207C10276BB',
@@ -93,8 +105,8 @@ const SAMPLE_EC_MALFORMED_LONG = buf(
 
 // ── Synthetic edge cases ──────────────────────────────────────────────────────
 
-// state=0x03, process=0x09: both unmapped, must fall back to the numeric string.
-const SAMPLE_UNMAPPED = buf('AA2032EB00180309000000000000000000000000000000000000000000005EBB')
+// state=0x07, process=0x09: both unmapped, must fall back to the numeric string.
+const SAMPLE_UNMAPPED = buf('AA2032EB00180709000000000000000000000000000000000000000000005ABB')
 
 // Same as SAMPLE_EB_STARTING but with the class byte changed from 0x32 (dishwasher) to 0x30
 // (dryer) — must be ignored.
@@ -138,6 +150,8 @@ describe(MODEL_ID, () => {
             'energy_saver',
             'half_load',
             'extra_dry',
+            'high_temp',
+            'dual_zone',
         ]) {
             assert.ok(components[c], `component ${c} present`)
         }
@@ -152,8 +166,6 @@ describe(MODEL_ID, () => {
             'salt_refill',
             'auto_door',
             'child_lock',
-            'dual_zone',
-            'high_temp',
             'night_dry',
             'steam',
             'tub_clean_counter',
@@ -169,14 +181,14 @@ describe(MODEL_ID, () => {
         assert.equal(components.initial_time.unit_of_measurement, 'min')
     })
 
-    test('0xEB Starting publishes Starting, Intensive, door open, plain minutes (real capture)', () => {
+    test('0xEB Starting publishes Starting, Heavy, door open, plain minutes (real capture)', () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EB_STARTING)
         const props = ha.devices[DEVICE_ID].properties
         assert.equal(props.run_state, 'Starting')
         assert.equal(props.process_state, '-')
         assert.equal(props.running, 'ON')
-        assert.equal(props.current_course, 'Intensive')
+        assert.equal(props.current_course, 'Heavy')
         assert.equal(props.initial_time, 194)
         assert.equal(props.remaining_time, 194)
         assert.equal(props.door_open, 'ON')
@@ -191,7 +203,7 @@ describe(MODEL_ID, () => {
         assert.equal(props.run_state, 'Running')
         assert.equal(props.process_state, 'Washing')
         assert.equal(props.running, 'ON')
-        assert.equal(props.current_course, 'Intensive')
+        assert.equal(props.current_course, 'Heavy')
         assert.equal(props.initial_time, 194)
         assert.equal(props.remaining_time, 194)
         assert.equal(props.door_open, 'OFF')
@@ -328,16 +340,51 @@ describe(MODEL_ID, () => {
         assert.equal(props.process_state, 'Night Dry')
         assert.equal(props.running, 'OFF')
         // Course is still reported during Night Dry — only `running` is overridden.
-        assert.equal(props.current_course, 'Intensive')
+        assert.equal(props.current_course, 'Heavy')
         assert.equal(props.remaining_time, 1)
         assert.equal(props.rinse_refill, 'ON')
+    })
+
+    test('Normal + High Temp decodes, and a brief Paused state keeps the cycle active (real captures)', () => {
+        const { ha, thinq } = makeDevice()
+        const props = ha.devices[DEVICE_ID].properties
+
+        thinq.emit('data', SAMPLE_EC_NORMAL_HIGH_TEMP_SELECTING)
+        assert.equal(props.run_state, 'Starting')
+        assert.equal(props.current_course, 'Normal')
+        assert.equal(props.initial_time, 170)
+        assert.equal(props.high_temp, 'ON')
+        assert.equal(props.dual_zone, 'OFF')
+        assert.equal(props.half_load, 'OFF')
+        assert.equal(props.extra_dry, 'OFF')
+        assert.equal(props.energy_saver, 'OFF')
+
+        thinq.emit('data', SAMPLE_EC_NORMAL_PAUSED)
+        assert.equal(props.run_state, 'Paused')
+        assert.equal(props.door_open, 'ON')
+        assert.equal(props.running, 'ON')
+        assert.equal(props.current_course, 'Normal')
+        assert.equal(props.high_temp, 'ON')
+
+        thinq.emit('data', SAMPLE_EC_NORMAL_RESUMED)
+        assert.equal(props.run_state, 'Running')
+        assert.equal(props.process_state, 'Washing')
+        assert.equal(props.door_open, 'OFF')
+    })
+
+    test('Heavy with Dual Zone and High Temp reads option bits 0x18 (real capture, panel photo)', () => {
+        const { ha, thinq } = makeDevice()
+        thinq.emit('data', SAMPLE_EB_RUNNING_WASHING)
+        const props = ha.devices[DEVICE_ID].properties
+        assert.equal(props.high_temp, 'ON')
+        assert.equal(props.dual_zone, 'ON')
     })
 
     test('unmapped state/process fall back to the numeric string', () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_UNMAPPED)
         const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.run_state, '3')
+        assert.equal(props.run_state, '7')
         assert.equal(props.process_state, '9')
         assert.equal(props.running, 'OFF')
     })

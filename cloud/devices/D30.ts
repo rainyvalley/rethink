@@ -126,6 +126,22 @@ export default class Device extends AABBDevice {
                         name: 'Extra dry',
                         icon: 'mdi:heat-wave',
                     },
+                    high_temp: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-high_temp',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_high_temp',
+                        state_topic: '$this/high_temp',
+                        name: 'High temp',
+                        icon: 'mdi:thermometer-high',
+                    },
+                    dual_zone: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-dual_zone',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_dual_zone',
+                        state_topic: '$this/dual_zone',
+                        name: 'Dual zone',
+                        icon: 'mdi:view-split-horizontal',
+                    },
                 },
             }),
         )
@@ -145,15 +161,19 @@ export default class Device extends AABBDevice {
     // for 0xeb (single record) the record at body[2..27] is the current reading. The handshake
     // hello also starts 0x32 but its second byte is 0x31 ("21" ASCII) — excluded by the flag
     // check. Offsets below are relative to the current record (base = 2 for 0xeb, 28 for 0xec):
-    //   [2]      state    0x01=Starting, 0x02=Running, 0x04=Done, 0x05=Complete (transient),
-    //                     0x00=Off/standby (after Done, before the device stops reporting)
+    //   [2]      state    0x01=Starting, 0x02=Running, 0x03=Paused, 0x04=Done, 0x05=Complete
+    //                     (transient), 0x00=Off/standby (after Done, before the device stops
+    //                     reporting). 0x03 seen once, 2026-09-23: for 24 s just after a Normal cycle
+    //                     started, with the door-open bit set, then back to 0x02.
     //   [3]      process  0x02=Washing, 0x03=Rinsing, 0x04=Drying, 0x05=Complete, 0x06=Night
     //                     Dry (post-cycle; state stays 0x02/Running for ~8.5h — treated as not
     //                     running), 0x00=none
     //   [5]/[6]  initial time   (hour, minute)   e.g. 03 05 = 3:05 (Intensive)
-    //   [7]      course  0x05=Eco, 0x01=Auto, 0x02=Intensive (clears to 0x00 at cycle end) —
-    //                    verified 2026-09-18/19 across Eco, Auto and Intensive washes.
-    //                    0x03=Delicate — verified 2026-09-23 on an LDT54788D (panel photo).
+    //   [7]      course  0x05=Normal, 0x01=Auto, 0x02=Heavy (clears to 0x00 at cycle end) —
+    //                    verified 2026-09-18/19 across Eco, Auto and Intensive washes (the fork's
+    //                    names for 0x05/0x02); the LDT54788D's panel labels them Normal and Heavy
+    //                    (panel photos 2026-09-21 and 2026-09-23). 0x03=Delicate — verified
+    //                    2026-09-23 on an LDT54788D (panel photo).
     //   [9]/[10] remaining time (hour, minute)   e.g. 02 35 = 2:53, 1/min countdown
     //   [13]     status bitfield: bit 3 (0x08) = rinse aid refill (most likely; the fork this
     //            was adapted from called it "salt refill" — unlikely on a US model), bit 1
@@ -163,9 +183,11 @@ export default class Device extends AABBDevice {
     //            bit 6 (0x40) = half load, bit 2 (0x04) = extra dry — verified 2026-09-23: on a
     //            Delicate course, selecting Half Load set 0x40 and cut the estimate 1:54 -> 1:43,
     //            then Extra Dry set 0x04 and raised it to 2:03 (both lamps lit in the panel photo).
-    //            A Heavy course read 0x18; bits 0x08/0x10 are still unidentified.
+    //            bit 3 (0x08) = high temp, bit 4 (0x10) = dual zone — verified 2026-09-23: a
+    //            Normal course with only the High Temp lamp lit read 0x08, and the Heavy course
+    //            from 2026-09-21, with the Dual Zone and High Temp lamps lit, read 0x18.
     //            Like the course byte, it clears to 0x00 at cycle end (state 0x04/0x05).
-    // Still TODO (need more washes/options): other option bits (dual_zone/steam/high_temp/...),
+    // Still TODO (need more washes/options): other option bits (steam, night dry, ...),
     // error codes.
     processAABB(buf: Buffer) {
         if (buf[0] !== 0x32 || (buf[1] !== 0xeb && buf[1] !== 0xec)) {
@@ -210,6 +232,7 @@ export default class Device extends AABBDevice {
             0x00: 'Off',
             0x01: 'Starting',
             0x02: 'Running',
+            0x03: 'Paused',
             0x04: 'Done',
             0x05: 'Complete',
         }
@@ -221,14 +244,14 @@ export default class Device extends AABBDevice {
             0x06: 'Night Dry',
             0x00: '-',
         }
-        const COURSES: Record<number, string> = { 0x05: 'Eco', 0x01: 'Auto', 0x02: 'Intensive', 0x03: 'Delicate' }
+        const COURSES: Record<number, string> = { 0x05: 'Normal', 0x01: 'Auto', 0x02: 'Heavy', 0x03: 'Delicate' }
         // run_state = granular machine state; process_state = phase.
         this.publishProperty('run_state', STATES[state] ?? String(state))
         this.publishProperty('process_state', PROCESS[process] ?? String(process))
 
         // `running` binary (on/off) mirrors the cloud's main on/off sensor — the entity the
         // Live Activity automation keys on (to:on / from:on to:off).
-        const active = state === 0x01 || state === 0x02
+        const active = state === 0x01 || state === 0x02 || state === 0x03
         // The state byte stays 0x02 (Running) for ~8.5h of post-cycle Night Dry (process
         // 0x06); treat that phase as not running so `running` reflects the actual cycle.
         this.publishProperty('running', active && process !== 0x06 ? 'ON' : 'OFF')
@@ -242,6 +265,8 @@ export default class Device extends AABBDevice {
         this.publishProperty('energy_saver', active && optionBits & 0x02 ? 'ON' : 'OFF')
         this.publishProperty('half_load', active && optionBits & 0x40 ? 'ON' : 'OFF')
         this.publishProperty('extra_dry', active && optionBits & 0x04 ? 'ON' : 'OFF')
+        this.publishProperty('high_temp', active && optionBits & 0x08 ? 'ON' : 'OFF')
+        this.publishProperty('dual_zone', active && optionBits & 0x10 ? 'ON' : 'OFF')
         this.publishProperty('rinse_refill', statusBits & 0x08 ? 'ON' : 'OFF')
         this.publishProperty('door_open', statusBits & 0x02 ? 'ON' : 'OFF')
     }
