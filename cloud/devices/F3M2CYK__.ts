@@ -32,8 +32,8 @@ import log from '@/util/logging'
 // the LG cloud's own decoded washerDryer state at matching timestamps — not guessed from static analysis.
 // The 0xCD/0xBD offsets were cross-checked against a ~2-day capture of real traffic and the physical
 // display: a full Warm/Medium/TurboWash load reads total=53, remaining counting down from there, and a
-// second Rinse+Spin load reads total=remaining=18 and goes straight into phase 0x1e (Rinsing), matching
-// the panel (no separate Washing step for that course). A third capture, a Tub Clean (1:29 total,
+// second, 18-minute load reads total=remaining=18 and goes straight into phase 0x1e (Rinsing), with no
+// Washing step. A third capture, a Tub Clean (1:29 total,
 // ran 05:21->06:50), showed the time fields are [hour][minute] pairs rather than a uint16 minute count
 // (01 17 -> 01 12 -> ... -> 01 03 -> 00 3a) — both readings agree below one hour, which is why the
 // first two loads couldn't tell them apart.
@@ -148,13 +148,11 @@ const COURSE = Enum.of({
     'Small Load': 0x0e,
 })
 
-// 0xCD/0xBD course code -> name. Only courses seen in a capture are listed; anything else is
-// published as its raw hex code so it can be identified from HA. 0x0d is confirmed (the user ran a
-// Tub Clean); 0x10 is inferred (18-minute cycle that went straight to Rinsing — Rinse+Spin).
-// 0x06 was seen on a Warm/Medium/TurboWash load whose course wasn't recorded.
+// 0xCD/0xBD course code -> name. Only courses confirmed at the panel are listed; anything else is
+// published as its raw hex code so it can be identified from HA. Also seen, course unrecorded: 0x06
+// (a Warm/Medium/TurboWash load) and 0x10 (an 18-minute cycle that went straight to Rinsing).
 const DUMP_COURSE = Enum.of({
     'Tub Clean': 0x0d,
-    'Rinse+Spin': 0x10,
 })
 
 // Soil level 1-5, clean sequential mapping confirmed by single-step toggling against the cloud's

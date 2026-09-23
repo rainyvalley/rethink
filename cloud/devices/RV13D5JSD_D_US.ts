@@ -21,9 +21,8 @@ import log from '@/util/logging'
 //          rec[2]     phase at the end (0x32/Drying both times)
 //          rec[3..4]  cycle time, h:m — 1:03 and 0:10 (both matched the display at start)
 //          rec[5..6]  same value as rec[3..4] in both captures; not published
-//          rec[7]     cycle — 0x03 on a load with Normal dry level; 0x15 on a TurboSteam cycle
-//                     (Steam Fresh or Steam Sanitary, unconfirmed), so 0x15 is published as its
-//                     raw code
+//          rec[7]     cycle — 0x03 on a load with Normal dry level; 0x15 = Steam Fresh (confirmed
+//                     by the user); unmapped codes are published as their raw hex value
 //          rec[9]     dry level — 0x03/Normal and 0x00/none (steam cycle, no dry-level lamp lit)
 //          rec[10]    temp — 0x04/Med High both times (the unlabeled lamp between High and Medium)
 //        These are published as the "last cycle" settings, since this dryer only reports them once
@@ -69,6 +68,7 @@ const CYCLES = Enum.of({
     'Speed Dry': 0x10,
     'Air Dry': 0x11,
     Manual: 0x12,
+    'Steam Fresh': 0x15, // confirmed on RV13D5JSD_D_US
 })
 
 const TEMPS = Enum.of({

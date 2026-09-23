@@ -20,7 +20,7 @@ const HB_TRANSIENT_ZERO = buf('AA09307200000000BB')
 
 // 0xE2 end-of-cycle summaries. First: cycle 0x03, 1:03, Normal dry level, Med High temp (panel photo).
 const E2_END_OF_CYCLE = buf('AA2330E2031B320103010303000304000000000000AB0001870100000072000000B2BB')
-// Second: a 10-minute TurboSteam cycle (code 0x15, not yet named), no dry level, Med High temp.
+// Second: a 10-minute Steam Fresh cycle (code 0x15), no dry level, Med High temp.
 const E2_STEAM_CYCLE = buf('AA2330E2031B32000A000A15000004000000000000A90000420100000272000000E9BB')
 
 // A real 0xEB single-record frame for the sibling RV13U6AM8W_D_US_WIFI model (identical processRecord
@@ -89,7 +89,7 @@ describe(MODEL_ID, () => {
         assert.equal(props.dry_level, 'Normal')
 
         thinq.emit('data', E2_STEAM_CYCLE)
-        assert.equal(props.cycle, '0x15')
+        assert.equal(props.cycle, 'Steam Fresh')
         assert.equal(props.cycle_time, 10)
         assert.equal(props.temp, 'Med High')
         assert.equal(props.dry_level, 'None')
