@@ -11,11 +11,11 @@ const META: Metadata = { modelId: MODEL_ID, modelName: 'F3M2CYK__', swVersion: '
 // This washer's real traffic is 0xCD (idle keepalive, ~409 bytes) and 0xBD (event, ~410-480 bytes) —
 // it never sends the 0xEC/0xEB frames the handler was originally written for (see the comment above
 // processAABB in the source file). All 0xCD/0xBD fixtures below are REAL frames taken verbatim from a
-// ~2-day capture of the physical appliance (device 826dbe82-...), spanning one Warm/Medium/TurboWash
+// ~2-day capture of the physical appliance (device 826dbe82-...), spanning one Warm/High/TurboWash
 // load (total 53 min) and a second load (total 18 min, no Washing phase), plus a third
 // capture of a Tub Clean (total 1:29) that showed the time fields are [hour][minute] pairs.
 
-// ── 0xCD (idle keepalive) — first load, Warm/Medium/TurboWash, total 53 min ─────────────────────────
+// ── 0xCD (idle keepalive) — first load, Normal/Warm/High spin/Normal soil/TurboWash, total 53 min ─────────────────────────
 
 const CD_WASHING = buf(
     'AA0020CD00019001020B170031003500000600030400010400058080226A000600000000000005041E2122262A1818181818FFFFFCF0F50000000000000000000000000000000000000000000000000000000000008383838383B60000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000500800600000000000000000000017C0243FFEF020100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000C22D0040003000000000000000000000000000000000000000000000000000001ABB',
@@ -141,11 +141,21 @@ describe(MODEL_ID, () => {
         const cfg = ha.devices[DEVICE_ID].config
         assert.ok(cfg, 'config published on construction')
         const components = cfg!.components as Record<string, Record<string, unknown>>
-        for (const c of ['remaining_time', 'initial_time', 'power', 'status', 'course', 'tub_clean_count']) {
+        for (const c of [
+            'remaining_time',
+            'initial_time',
+            'power',
+            'status',
+            'course',
+            'tub_clean_count',
+            'soil',
+            'spin',
+            'temp',
+        ]) {
             assert.ok(components[c], `component ${c} present`)
         }
         // 0xEC/0xEB-only fields this model never sends must not be advertised (they'd sit at Unknown)
-        for (const c of ['soil', 'spin', 'temp', 'door', 'door_lock', 'turbo_wash', 'reserve_time']) {
+        for (const c of ['door', 'door_lock', 'turbo_wash', 'reserve_time']) {
             assert.equal(components[c], undefined, `component ${c} absent`)
         }
         assert.equal(components.initial_time.device_class, 'duration')
@@ -318,6 +328,34 @@ describe(MODEL_ID, () => {
         assert.equal(p.initial_time, 104)
         assert.equal(p.remaining_time, 104)
         assert.equal(p.tub_clean_count, 2)
+        assert.equal(p.soil, 'Light')
+        assert.equal(p.temp, 'Cold')
+        assert.equal(p.spin, 'Medium')
+    })
+
+    test('soil/temp/spin decode against the load 1 panel photo and hold once their stage has cleared them', () => {
+        const { ha, thinq } = makeDevice()
+        const p = ha.devices[DEVICE_ID].properties
+        thinq.emit('data', BD_SELECTING) // no course committed yet: all zero, nothing published
+        assert.equal(p.soil, undefined)
+        thinq.emit('data', BD_SENSING)
+        assert.deepEqual([p.soil, p.temp, p.spin], ['Normal', 'Warm', 'High'])
+        thinq.emit('data', CD_RINSING) // soil byte cleared once rinsing starts
+        assert.deepEqual([p.soil, p.temp, p.spin], ['Normal', 'Warm', 'High'])
+        thinq.emit('data', CD_SPINNING) // temp byte cleared once spinning starts
+        assert.deepEqual([p.soil, p.temp, p.spin], ['Normal', 'Warm', 'High'])
+    })
+
+    test('settings a course does not use publish as "-" at selection', () => {
+        const { ha, thinq } = makeDevice()
+        const p = ha.devices[DEVICE_ID].properties
+        thinq.emit('data', BD_SENSING)
+        thinq.emit('data', TC_BD_SELECTING) // Tub Clean: no soil or temp
+        assert.deepEqual([p.soil, p.temp, p.spin], ['-', '-', 'Medium'])
+        thinq.emit('data', BD_SECOND_LOAD_SELECTING) // Rinse+Spin-like 18-min load: no soil
+        assert.deepEqual([p.soil, p.temp, p.spin], ['-', 'Cold', 'High'])
+        thinq.emit('data', TOWELS_BD_SELECTING)
+        assert.deepEqual([p.soil, p.temp, p.spin], ['Normal', 'Warm', 'Extra High'])
     })
 
     // ── Ignored packet tests ──────────────────────────────────────────────────

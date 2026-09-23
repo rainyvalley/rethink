@@ -18,9 +18,8 @@ import log from '@/util/logging'
 //               a prior state to diff against). Live-confirmed: identical field offsets to 0xEC's record B.
 //   0xBD / 0xCD full status dump / idle keepalive (~406/405 bytes, this washer's actual traffic — it
 //               never sends 0xEC/0xEB). Phase, remaining/total time, course and the washes-since-
-//               Tub-Clean counter are decoded (see CD_*/BD_* offsets below); soil/spin/temp/options
-//               live somewhere in the remaining bytes but aren't pinned down yet, so they're left
-//               unpublished. A 0xBD with event byte 0x03 (476 bytes) is sent once at cycle end.
+//               Tub-Clean counter, soil, spin and temp are decoded (see CD_*/BD_* offsets below); the
+//               option flags aren't pinned down yet, so they're left unpublished. A 0xBD with event byte 0x03 (476 bytes) is sent once at cycle end.
 //   0x72        run heartbeat, buf[3]: 0xC9 = started/resumed, 0xC8 = stopped (cycle end), with a
 //               transient 0x00 just before the 0xC8. Drives `power` and the end-of-cycle state.
 //   0xD8        washes since the last Tub Clean (same counter as the 0xCD/0xBD byte), sent in bursts
@@ -32,7 +31,7 @@ import log from '@/util/logging'
 // pause/resume, remote start/pause/power-off from the LG app) and correlating each byte change against
 // the LG cloud's own decoded washerDryer state at matching timestamps — not guessed from static analysis.
 // The 0xCD/0xBD offsets were cross-checked against a ~2-day capture of real traffic and the physical
-// display: a full Warm/Medium/TurboWash load reads total=53, remaining counting down from there, and a
+// display: a full Warm/High/TurboWash load reads total=53, remaining counting down from there, and a
 // second, 18-minute load reads total=remaining=18 and goes straight into phase 0x1e (Rinsing), with no
 // Washing step. A third capture, a Tub Clean (1:29 total,
 // ran 05:21->06:50), showed the time fields are [hour][minute] pairs rather than a uint16 minute count
@@ -68,6 +67,14 @@ const DUMP_COURSE_OFFSET = 15
 // 0xBD's copy is stale and isn't published; the updated count arrives in the 0xD8 burst at cycle
 // end. There is no days-based counter in any frame.
 const DUMP_TUB_CLEAN_COUNT_OFFSET = 29
+// Soil, temp and spin, using the same SOIL/TEMP/SPIN indices as the 0xEC/0xEB record. Confirmed
+// against two panel photos: Normal/Warm/High/Normal soil reads 03/04/04, Heavy Duty/Cold/Medium/Light
+// soil reads 01/02/03. Other loads fit the same scales (Normal and Towels read Warm with Normal soil,
+// Rinse+Spin reads Cold with no soil, Tub Clean reads neither). 0x00 means "not applicable": soil
+// clears when Rinsing starts and temp when Spinning starts, while spin holds for the whole cycle.
+const DUMP_SOIL_OFFSET = 17
+const DUMP_TEMP_OFFSET = 18
+const DUMP_SPIN_OFFSET = 21
 
 // 0xD8: buf[2] = washes since the last Tub Clean. The power-on burst of 0x00 is a placeholder, so a
 // zero is only taken from the first 0xD8 after the cycle-end 0x72 00 (i.e. a Tub Clean just finished).
@@ -121,6 +128,8 @@ const DOOR_OFFSET = 17
 const DOOR_CLOSED = 0x02
 
 const PHASE_OFF = 0x00
+const PHASE_SELECTING = 0x05
+const PHASE_SENSING = 0x14
 const PHASE_COMPLETE = 0x3c
 
 // Phase/status byte. 0x14 (Sensing) carried over from the original qualitative pass — this session's
@@ -259,8 +268,29 @@ export default class Device extends AABBDevice {
                         icon: 'mdi:counter',
                         state_class: 'measurement',
                     },
-                    // Soil/spin/temp, the option flags, door, door lock and Delay Wash time are only
-                    // decoded from 0xEC/0xEB frames, which this model hasn't been seen sending. They're
+                    soil: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-soil',
+                        state_topic: '$this/soil',
+                        name: 'Soil level',
+                        icon: 'mdi:liquid-spot',
+                    },
+                    spin: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-spin',
+                        state_topic: '$this/spin',
+                        name: 'Spin',
+                        icon: 'mdi:autorenew',
+                    },
+                    temp: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-temp',
+                        state_topic: '$this/temp',
+                        name: 'Temperature',
+                        icon: 'mdi:thermometer',
+                    },
+                    // The option flags, door, door lock and Delay Wash time are only decoded from
+                    // 0xEC/0xEB frames, which this model hasn't been seen sending. They're
                     // left out of discovery so they don't sit at Unknown in HA; processStatus still
                     // publishes their state topics if a unit does send those frames.
                 },
@@ -285,8 +315,8 @@ export default class Device extends AABBDevice {
         log('F3M2CYK__', 'unrecognized frame', buf.toString('hex'))
     }
 
-    // 0xCD/0xBD full status dump: phase, remaining/total time, course and washes since Tub Clean
-    // (soil/spin/temp/options are somewhere in the rest of the body but not pinned down yet).
+    // 0xCD/0xBD full status dump: phase, remaining/total time, course, soil/spin/temp and washes since
+    // Tub Clean (the option flags are somewhere in the rest of the body but not pinned down yet).
     private processDump(buf: Buffer, shift: number) {
         if (buf.length <= DUMP_TUB_CLEAN_COUNT_OFFSET + shift) {
             log('F3M2CYK__', 'status dump too short', buf.toString('hex'))
@@ -322,6 +352,19 @@ export default class Device extends AABBDevice {
         const course = at(DUMP_COURSE_OFFSET)
         if (course !== 0) {
             this.publishProperty('course', DUMP_COURSE.map(course) ?? `0x${course.toString(16).padStart(2, '0')}`)
+            // A 0x00 setting before the cycle is under way means the course doesn't use it (e.g. Tub
+            // Clean has no soil level); later in the cycle it only means that stage is over, so the
+            // last value is kept.
+            const presetting = phase === PHASE_SELECTING || phase === PHASE_SENSING
+            const setting = (name: string, offset: number, map: Enum<string>) => {
+                const value = at(offset)
+                if (value !== 0)
+                    this.publishProperty(name, map.map(value) ?? `0x${value.toString(16).padStart(2, '0')}`)
+                else if (presetting) this.publishProperty(name, '-')
+            }
+            setting('soil', DUMP_SOIL_OFFSET, SOIL)
+            setting('temp', DUMP_TEMP_OFFSET, TEMP)
+            setting('spin', DUMP_SPIN_OFFSET, SPIN)
         }
         if (!cycleEnd) this.publishProperty('tub_clean_count', at(DUMP_TUB_CLEAN_COUNT_OFFSET))
     }
