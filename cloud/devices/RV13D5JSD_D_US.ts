@@ -9,7 +9,7 @@ import log from '@/util/logging'
 
 // LG dryer — matched on modelId "RV13D5JSD_D_US". This handler was originally written for the
 // 0xEC/0xEB status records below (copied from RV13U6AM8W_D_US_WIFI.ts), but captures of this specific
-// appliance's real traffic (three days, three cycles) showed it never sends those: only 0x31 (serial,
+// appliance's real traffic (three days, four cycles) showed it never sends those: only 0x31 (serial,
 // once per reconnect), 0x72 (heartbeat) and 0xE2 (end-of-cycle summary, repeated ~10x). The 0xEC/0xEB
 // path is kept as-is in case another unit of this model does send them.
 //   0x72 (5 bytes: 30 72 00 <XX> 00) — buf[3] flips between 0xC9 (running/resumed) and 0xC8
@@ -17,17 +17,18 @@ import log from '@/util/logging'
 //        end. `power` and `status` (Running/Off) are driven from this.
 //   0xE2 (31 bytes, end-of-cycle only) — buf[2..] follows the same record layout as the 0xEC/0xEB
 //        record processRecord() reads, with [hour][minute] time pairs where that record has a single
-//        minute byte. Confirmed against three cycles (two with panel photos):
+//        minute byte. Confirmed against four cycles (three with panel photos):
 //          rec[2]     phase at the end (0x32/Drying every time)
-//          rec[3..4]  cycle time, h:m — 1:03, 0:10 and 0:55 (the two photographed ones matched the
-//                     display at start)
+//          rec[3..4]  cycle time, h:m — 1:03, 0:10, 0:55 and 1:05 (the photographed ones matched the
+//                     display at start; it's the start estimate, not the actual run time)
 //          rec[5..6]  same value as rec[3..4] in every capture; not published
-//          rec[7]     cycle — 0x03 on a load with Normal dry level; 0x02 = Towels and 0x15 = Steam
-//                     Fresh (confirmed by the user); unmapped codes are published as their raw hex
-//                     value
-//          rec[9]     dry level — 0x03/Normal and 0x00/none (steam cycle, no dry-level lamp lit)
-//          rec[10]    temp — 0x04/Med High on both photographed cycles (the unlabeled lamp between
-//                     High and Medium)
+//          rec[7]     cycle — 0x03 on a load with Normal dry level; 0x07 = Bedding (panel photo, as in
+//                     the sibling map); 0x02 = Towels and 0x15 = Steam Fresh (confirmed by the user);
+//                     unmapped codes are published as their raw hex value
+//          rec[9]     dry level — 0x03/Normal, 0x05/Very and 0x00/none (steam cycle, no dry-level
+//                     lamp lit)
+//          rec[10]    temp — 0x04/Med High (the unlabeled lamp between High and Medium) and
+//                     0x03/Medium, each matching the panel photo
 //        These are published as the "last cycle" settings, since this dryer only reports them once
 //        the cycle is over.
 // Live remaining time needs the appliance to be sending 0xEC/0xEB/similar status records with a
