@@ -152,6 +152,7 @@ describe(MODEL_ID, () => {
             'extra_dry',
             'high_temp',
             'dual_zone',
+            'night_dry',
         ]) {
             assert.ok(components[c], `component ${c} present`)
         }
@@ -166,7 +167,6 @@ describe(MODEL_ID, () => {
             'salt_refill',
             'auto_door',
             'child_lock',
-            'night_dry',
             'steam',
             'tub_clean_counter',
             'delay_start',
@@ -235,6 +235,7 @@ describe(MODEL_ID, () => {
         assert.equal(props.door_open, 'ON')
 
         thinq.emit('data', SAMPLE_EC_DELICATE_WASHING)
+        assert.equal(props.night_dry, 'ON') // Night Dry lamp lit in the panel photo
         assert.equal(props.run_state, 'Running')
         assert.equal(props.process_state, 'Washing')
         assert.equal(props.door_open, 'OFF')
@@ -245,6 +246,7 @@ describe(MODEL_ID, () => {
 
         thinq.emit('data', SAMPLE_EC_DELICATE_NIGHT_DRY)
         assert.equal(props.process_state, 'Night Dry')
+        assert.equal(props.night_dry, 'ON')
         assert.equal(props.running, 'OFF')
         assert.equal(props.half_load, 'OFF')
         assert.equal(props.extra_dry, 'OFF')
@@ -350,6 +352,7 @@ describe(MODEL_ID, () => {
         const props = ha.devices[DEVICE_ID].properties
 
         thinq.emit('data', SAMPLE_EC_NORMAL_HIGH_TEMP_SELECTING)
+        assert.equal(props.night_dry, 'OFF') // Night Dry lamp off in the panel photo
         assert.equal(props.run_state, 'Starting')
         assert.equal(props.current_course, 'Normal')
         assert.equal(props.initial_time, 170)

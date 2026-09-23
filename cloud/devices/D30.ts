@@ -134,6 +134,14 @@ export default class Device extends AABBDevice {
                         name: 'High temp',
                         icon: 'mdi:thermometer-high',
                     },
+                    night_dry: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-night_dry',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_night_dry',
+                        state_topic: '$this/night_dry',
+                        name: 'Night dry',
+                        icon: 'mdi:weather-night',
+                    },
                     dual_zone: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-dual_zone',
@@ -178,7 +186,10 @@ export default class Device extends AABBDevice {
     //   [13]     status bitfield: bit 3 (0x08) = rinse aid refill (most likely; the fork this
     //            was adapted from called it "salt refill" — unlikely on a US model), bit 1
     //            (0x02) = door open (Auto Open Dry; the cloud does NOT report this — our
-    //            superset).
+    //            superset), bit 7 (0x80) = Night Dry enabled — verified 2026-09-23 against three
+    //            panel photos on an LDT54788D: set on the 2026-09-21 Heavy and 2026-09-23 Delicate
+    //            runs (Night Dry lamp lit, both followed by the process 0x06 phase), clear on a
+    //            2026-09-23 Normal run with the lamp off. Only reported while a course is active.
     //   [14]     options bitfield: bit 1 (0x02) = energy saver — verified 2026-09-18.
     //            bit 6 (0x40) = half load, bit 2 (0x04) = extra dry — verified 2026-09-23: on a
     //            Delicate course, selecting Half Load set 0x40 and cut the estimate 1:54 -> 1:43,
@@ -187,7 +198,7 @@ export default class Device extends AABBDevice {
     //            Normal course with only the High Temp lamp lit read 0x08, and the Heavy course
     //            from 2026-09-21, with the Dual Zone and High Temp lamps lit, read 0x18.
     //            Like the course byte, it clears to 0x00 at cycle end (state 0x04/0x05).
-    // Still TODO (need more washes/options): other option bits (steam, night dry, ...),
+    // Still TODO (need more washes/options): other option bits (steam, ...),
     // error codes.
     processAABB(buf: Buffer) {
         if (buf[0] !== 0x32 || (buf[1] !== 0xeb && buf[1] !== 0xec)) {
@@ -267,6 +278,7 @@ export default class Device extends AABBDevice {
         this.publishProperty('extra_dry', active && optionBits & 0x04 ? 'ON' : 'OFF')
         this.publishProperty('high_temp', active && optionBits & 0x08 ? 'ON' : 'OFF')
         this.publishProperty('dual_zone', active && optionBits & 0x10 ? 'ON' : 'OFF')
+        this.publishProperty('night_dry', active && statusBits & 0x80 ? 'ON' : 'OFF')
         this.publishProperty('rinse_refill', statusBits & 0x08 ? 'ON' : 'OFF')
         this.publishProperty('door_open', statusBits & 0x02 ? 'ON' : 'OFF')
     }
