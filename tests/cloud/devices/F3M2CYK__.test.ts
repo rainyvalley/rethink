@@ -192,7 +192,7 @@ describe(MODEL_ID, () => {
             assert.equal(p.remaining_time, remaining)
             assert.equal(p.initial_time, initial)
         }
-        assert.equal(p.course, '0x06') // course code not identified yet: published raw
+        assert.equal(p.course, 'Normal')
         assert.equal(p.tub_clean_count, 6)
     })
 

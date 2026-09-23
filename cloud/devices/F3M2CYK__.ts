@@ -158,10 +158,10 @@ const COURSE = Enum.of({
 })
 
 // 0xCD/0xBD course code -> name. Only courses confirmed by the user are listed; anything else is
-// published as its raw hex code so it can be identified from HA. Also seen, course unrecorded: 0x06
-// (twice, both with the same Warm/Medium/TurboWash settings bytes) and 0x10 (an 18-minute cycle that
-// went straight to Rinsing).
+// published as its raw hex code so it can be identified from HA. Also seen, course unrecorded: 0x10
+// (an 18-minute cycle that went straight to Rinsing).
 const DUMP_COURSE = Enum.of({
+    Normal: 0x06,
     'Tub Clean': 0x0d,
     Towels: 0x0e,
 })
