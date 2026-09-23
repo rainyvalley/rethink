@@ -12,7 +12,8 @@ const META: Metadata = { modelId: MODEL_ID, modelName: 'F3M2CYK__', swVersion: '
 // it never sends the 0xEC/0xEB frames the handler was originally written for (see the comment above
 // processAABB in the source file). All 0xCD/0xBD fixtures below are REAL frames taken verbatim from a
 // ~2-day capture of the physical appliance (device 826dbe82-...), spanning one Warm/Medium/TurboWash
-// load (total 53 min) and a second Rinse+Spin load (total 18 min, no Washing phase).
+// load (total 53 min) and a second Rinse+Spin load (total 18 min, no Washing phase), plus a third
+// capture of a Tub Clean (total 1:29) that showed the time fields are [hour][minute] pairs.
 
 // ── 0xCD (idle keepalive) — first load, Warm/Medium/TurboWash, total 53 min ─────────────────────────
 
@@ -71,6 +72,29 @@ const BD_TOO_SHORT = buf('AA0620BD000102BB')
 // ignored.
 const CD_WRONG_CLASS = buf(CD_WASHING.toString('hex').replace(/^aa0020/i, 'aa0030'))
 
+// ── Third capture: Tub Clean (course 0x0d), 1:29 total, washes-since-Tub-Clean = 8 ─────────────────
+
+const TC_BD_SELECTING = buf(
+    'AA0020BD0001019001020B05011D011D00000D00000000020300000400006A0008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000177025800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000300000000000000000000000000000000000000000000000000000A1BB',
+)
+// 1:23 remaining of 1:29 — a uint16 read would give 279/285.
+const TC_CD_WASHING = buf(
+    'AA0020CD00019001020B170117011D00000D00000000020300010480026A000800000000000037041B1D1D1F2017181B1E20FFF4F3F3F30000000000000000000000000000000000000000000000000000000000008383848484AE0A000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001004F0600000000000000000000017E024AFFF4000003010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000030000000000000000000000000000000000000000000000000000010BB',
+)
+// Crossed the hour boundary: 00 3a = 58 min remaining.
+const TC_CD_WASHING_UNDER_HOUR = buf(
+    'AA0020CD00019001020B17003A011D00000D00000000020300010480026A0008000000000001EF042D2E2E2E303F3F404041F3F3F3F3F30000000000000000000000000000000000000000000000000000000000008787878787B06A000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001004F0600000000000000000000017E025DFFF400001C0100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000300000000000000000000000000000000000000000000000000000E9BB',
+)
+// End-of-cycle 0xBD (event byte 0x03), still reporting Spinning with 0:01 left.
+const TC_BD_CYCLE_END = buf(
+    'AA0020BD0003019001020B280001011D00000D00000000000300010080026A00080000000000025B04494A4C4D491C1C1C1D1DFFFFFFFFFF06D206D206D206D206D201A901A901A901A901A9000500050005000500058484848484B8A0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001005A0600000000010000000000017E026EFFE602011E010000E9F8010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003E803E80000000002000000003000000000000000000000000000000000000000000000000000004503010100040506073900000000FF014D0000000001171808022418000001FD64640000FDFD000000FD000007B0003C000010000D201100006A00024018D0BB484B1A001A0040BB',
+)
+
+// 0x72 heartbeats around the Tub Clean: C9 at start, transient 00 then C8 at the end.
+const HB_START = buf('AA09207200C9005BBB')
+const HB_TRANSIENT_ZERO = buf('AA09207200000010BB')
+const HB_STOP = buf('AA09207200C80058BB')
+
 // Real mystery frames, currently undecoded: 0xD8 (by far the most frequent frame type in the
 // capture, ~80 over 2 days) and an unidentified 0x7F type (~10 over 2 days).
 const MYSTERY_D8 = buf('AA0720D800FCBB')
@@ -89,8 +113,12 @@ describe(MODEL_ID, () => {
         const cfg = ha.devices[DEVICE_ID].config
         assert.ok(cfg, 'config published on construction')
         const components = cfg!.components as Record<string, Record<string, unknown>>
-        for (const c of ['remaining_time', 'initial_time', 'power', 'status']) {
+        for (const c of ['remaining_time', 'initial_time', 'power', 'status', 'course', 'tub_clean_count']) {
             assert.ok(components[c], `component ${c} present`)
+        }
+        // 0xEC/0xEB-only fields this model never sends must not be advertised (they'd sit at Unknown)
+        for (const c of ['soil', 'spin', 'temp', 'door', 'door_lock', 'turbo_wash', 'reserve_time']) {
+            assert.equal(components[c], undefined, `component ${c} absent`)
         }
         assert.equal(components.initial_time.device_class, 'duration')
         assert.equal(components.initial_time.unit_of_measurement, 'min')
@@ -100,18 +128,20 @@ describe(MODEL_ID, () => {
         const { ha, thinq } = makeDevice()
         const p = ha.devices[DEVICE_ID].properties
 
-        for (const [frame, status, remaining, initial] of [
-            [CD_WASHING, 'Washing', 49, 53],
-            [CD_RINSING, 'Rinsing', 29, 53],
-            [CD_SPINNING, 'Spinning', 13, 53],
-            [CD_COMPLETE, 'Complete', 1, 0],
+        for (const [frame, status, power, remaining, initial] of [
+            [CD_WASHING, 'Washing', 'ON', 49, 53],
+            [CD_RINSING, 'Rinsing', 'ON', 29, 53],
+            [CD_SPINNING, 'Spinning', 'ON', 13, 53],
+            // post-cycle frame zeroes the total; the last known total is kept
+            [CD_COMPLETE, 'Complete', 'OFF', 0, 53],
         ] as const) {
             thinq.emit('data', frame)
             assert.equal(p.status, status)
-            assert.equal(p.power, 'ON')
+            assert.equal(p.power, power)
             assert.equal(p.remaining_time, remaining)
             assert.equal(p.initial_time, initial)
         }
+        assert.equal(p.tub_clean_count, 7) // incremented from 6 at the end of the load
     })
 
     test('0xCD second load goes straight to Rinsing with total=remaining=18 (real capture)', () => {
@@ -127,19 +157,22 @@ describe(MODEL_ID, () => {
         const { ha, thinq } = makeDevice()
         const p = ha.devices[DEVICE_ID].properties
 
-        for (const [frame, status, remaining, initial] of [
-            [BD_SELECTING, 'Selecting', 1, 0],
-            [BD_SENSING, 'Sensing', 46, 46],
-            [BD_WASHING, 'Washing', 33, 53],
-            [BD_RINSING, 'Rinsing', 18, 53],
-            [BD_SPINNING_LARGE, 'Spinning', 1, 53],
+        for (const [frame, status, power, remaining, initial] of [
+            [BD_SELECTING, 'Selecting', 'ON', 1, 0],
+            [BD_SENSING, 'Sensing', 'ON', 46, 46],
+            [BD_WASHING, 'Washing', 'ON', 33, 53],
+            [BD_RINSING, 'Rinsing', 'ON', 18, 53],
+            // the 476-byte end-of-cycle 0xBD (event byte 0x03) still says Spinning, 0:01 left
+            [BD_SPINNING_LARGE, 'Complete', 'OFF', 0, 53],
         ] as const) {
             thinq.emit('data', frame)
             assert.equal(p.status, status)
-            assert.equal(p.power, 'ON')
+            assert.equal(p.power, power)
             assert.equal(p.remaining_time, remaining)
             assert.equal(p.initial_time, initial)
         }
+        assert.equal(p.course, '0x06') // course code not identified yet: published raw
+        assert.equal(p.tub_clean_count, 6)
     })
 
     test('0xBD second load Selecting reports total already committed to 18 (real capture)', () => {
@@ -149,6 +182,43 @@ describe(MODEL_ID, () => {
         assert.equal(p.status, 'Selecting')
         assert.equal(p.remaining_time, 18)
         assert.equal(p.initial_time, 18)
+        assert.equal(p.course, 'Rinse+Spin')
+    })
+
+    test('Tub Clean: times are [hour][minute] pairs, course and tub-clean count decode (real captures)', () => {
+        const { ha, thinq } = makeDevice()
+        const p = ha.devices[DEVICE_ID].properties
+
+        thinq.emit('data', TC_BD_SELECTING)
+        assert.equal(p.status, 'Selecting')
+        assert.equal(p.course, 'Tub Clean')
+        assert.equal(p.initial_time, 89)
+        assert.equal(p.tub_clean_count, 8)
+
+        thinq.emit('data', TC_CD_WASHING)
+        assert.equal(p.status, 'Washing')
+        assert.equal(p.remaining_time, 83)
+        assert.equal(p.initial_time, 89)
+
+        thinq.emit('data', TC_CD_WASHING_UNDER_HOUR)
+        assert.equal(p.remaining_time, 58)
+
+        thinq.emit('data', TC_BD_CYCLE_END)
+        assert.equal(p.status, 'Complete')
+        assert.equal(p.power, 'OFF')
+        assert.equal(p.remaining_time, 0)
+        assert.equal(p.initial_time, 89)
+    })
+
+    test('0x72 heartbeat drives power: C9 ON, C8 OFF, transient 00 ignored (real captures)', () => {
+        const { ha, thinq } = makeDevice()
+        const p = ha.devices[DEVICE_ID].properties
+        thinq.emit('data', HB_START)
+        assert.equal(p.power, 'ON')
+        thinq.emit('data', HB_TRANSIENT_ZERO)
+        assert.equal(p.power, 'ON')
+        thinq.emit('data', HB_STOP)
+        assert.equal(p.power, 'OFF')
     })
 
     test('the pre-existing 0xEB/0xEC dispatch still works after adding 0xCD/0xBD (real capture)', () => {

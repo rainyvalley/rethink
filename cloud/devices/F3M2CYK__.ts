@@ -17,10 +17,15 @@ import log from '@/util/logging'
 //               a preceding "old state" record (seen right after the appliance (re)connects, before it has
 //               a prior state to diff against). Live-confirmed: identical field offsets to 0xEC's record B.
 //   0xBD / 0xCD full status dump / idle keepalive (~406/405 bytes, this washer's actual traffic — it
-//               never sends 0xEC/0xEB). Phase, remaining time and total time are decoded (see
-//               CD_*/BD_* offsets below); course/soil/spin/temp/options live somewhere in the
-//               remaining ~390 bytes but aren't pinned down yet, so they're left unpublished.
-//   0x72, 0xD8  short heartbeat/ping frames — not decoded.
+//               never sends 0xEC/0xEB). Phase, remaining/total time, course and the washes-since-
+//               Tub-Clean counter are decoded (see CD_*/BD_* offsets below); soil/spin/temp/options
+//               live somewhere in the remaining bytes but aren't pinned down yet, so they're left
+//               unpublished. A 0xBD with event byte 0x03 (476 bytes) is sent once at cycle end.
+//   0x72        run heartbeat, buf[3]: 0xC9 = started/resumed, 0xC8 = stopped (cycle end), with a
+//               transient 0x00 just before the 0xC8. Drives `power` and the end-of-cycle state.
+//   0xD8        1-byte counter (same value as the 0xCD/0xBD washes-since-Tub-Clean byte), sent in
+//               bursts at power-on (preceded by a burst of 0x00) and at cycle end — not decoded,
+//               since the power-on 0x00 burst would briefly zero the count.
 // All offsets below are live-verified: captured real traffic via the rethink-agent MCP tools while
 // driving the physical washer (dial browsing, single-variable settings toggles, full wash cycles,
 // pause/resume, remote start/pause/power-off from the LG app) and correlating each byte change against
@@ -28,7 +33,10 @@ import log from '@/util/logging'
 // The 0xCD/0xBD offsets were cross-checked against a ~2-day capture of real traffic and the physical
 // display: a full Warm/Medium/TurboWash load reads total=53, remaining counting down from there, and a
 // second Rinse+Spin load reads total=remaining=18 and goes straight into phase 0x1e (Rinsing), matching
-// the panel (no separate Washing step for that course).
+// the panel (no separate Washing step for that course). A third capture, a Tub Clean (1:29 total,
+// ran 05:21->06:50), showed the time fields are [hour][minute] pairs rather than a uint16 minute count
+// (01 17 -> 01 12 -> ... -> 01 03 -> 00 3a) — both readings agree below one hour, which is why the
+// first two loads couldn't tell them apart.
 
 const STATUS_FRAME_TYPE = 0xec
 const STATUS_FRAME_LEN = 54 // 3B header + 26B record A (old) + 25B record B (current)
@@ -39,17 +47,29 @@ const SINGLE_STATUS_FRAME_LEN = 28 // 3B header + 25B record, no preceding "old 
 const SINGLE_RECORD_OFFSET = 3
 
 // 0xCD (idle keepalive, sent every ~5 min) and 0xBD (event, sent on phase/state changes) — both
-// ~400-byte full status dumps. Phase reuses the same STATUS map as the 0xEC/0xEB record; remaining
-// and total time are plain minute counts (NOT hour/minute byte pairs like the 0xEC/0xEB record).
+// ~400-byte full status dumps with the same layout, except that 0xBD has an extra event byte at
+// buf[3] (0x01 = cycle selected, 0x02 = phase change, 0x03 = cycle end), shifting everything after it
+// by one. Offsets below are for 0xCD; 0xBD adds BD_SHIFT. Phase reuses the same STATUS map as the
+// 0xEC/0xEB record; remaining and total time are [hour][minute] pairs like the 0xEC/0xEB record.
 const CD_FRAME_TYPE = 0xcd
-const CD_PHASE_OFFSET = 8
-const CD_REMAINING_OFFSET = 9 // uint16 BE, minutes
-const CD_TOTAL_OFFSET = 11 // uint16 BE, minutes
-
 const BD_FRAME_TYPE = 0xbd
-const BD_PHASE_OFFSET = 9
-const BD_REMAINING_OFFSET = 10 // uint16 BE, minutes
-const BD_TOTAL_OFFSET = 12 // uint16 BE, minutes
+const BD_SHIFT = 1
+const BD_EVENT_OFFSET = 3
+const BD_EVENT_CYCLE_END = 0x03
+const DUMP_PHASE_OFFSET = 8
+const DUMP_REMAINING_OFFSET = 9 // [hour][minute]
+const DUMP_TOTAL_OFFSET = 11 // [hour][minute]
+// Course code, constant for a whole cycle. NOT the same numbering as the 0xEC/0xEB rec[6] COURSE
+// map below. Reads 0x00 in the very first 0xBD of a cycle before the machine commits to one.
+const DUMP_COURSE_OFFSET = 15
+// Washes since the last Tub Clean: read 06 during load 1, 07 after it, 08 after load 2, and 00
+// straight after a Tub Clean. The value is the count as of cycle start; it increments at cycle end.
+const DUMP_TUB_CLEAN_COUNT_OFFSET = 29
+
+const HEARTBEAT_FRAME_TYPE = 0x72
+const HEARTBEAT_STATE_OFFSET = 3
+const HEARTBEAT_RUNNING = 0xc9
+const HEARTBEAT_STOPPED = 0xc8
 
 // Offsets below are relative to record B's own 0x18 marker (rec[0]).
 const PHASE_OFFSET = 1
@@ -92,6 +112,7 @@ const DOOR_OFFSET = 17
 const DOOR_CLOSED = 0x02
 
 const PHASE_OFF = 0x00
+const PHASE_COMPLETE = 0x3c
 
 // Phase/status byte. 0x14 (Sensing) carried over from the original qualitative pass — this session's
 // Speed Wash runs went straight 0x05->0x17 without an observed Sensing step, so it's unconfirmed but
@@ -125,6 +146,15 @@ const COURSE = Enum.of({
     'Speed Wash': 0x0c,
     'Rinse+Spin': 0x0d,
     'Small Load': 0x0e,
+})
+
+// 0xCD/0xBD course code -> name. Only courses seen in a capture are listed; anything else is
+// published as its raw hex code so it can be identified from HA. 0x0d is confirmed (the user ran a
+// Tub Clean); 0x10 is inferred (18-minute cycle that went straight to Rinsing — Rinse+Spin).
+// 0x06 was seen on a Warm/Medium/TurboWash load whose course wasn't recorded.
+const DUMP_COURSE = Enum.of({
+    'Tub Clean': 0x0d,
+    'Rinse+Spin': 0x10,
 })
 
 // Soil level 1-5, clean sequential mapping confirmed by single-step toggling against the cloud's
@@ -195,7 +225,7 @@ export default class Device extends AABBDevice {
                         unit_of_measurement: 'min',
                         // dual-purpose on the 0xEC/0xEB path (the estimated cycle time while
                         // selecting, the countdown while running); the 0xCD/0xBD path publishes a
-                        // separate initial_time below.
+                        // separate initial_time below. Zeroed at cycle end.
                     },
                     initial_time: {
                         platform: 'sensor',
@@ -208,101 +238,18 @@ export default class Device extends AABBDevice {
                         // only published from 0xCD/0xBD frames, which carry total time separately
                         // from remaining time.
                     },
-                    reserve_time: {
+                    tub_clean_count: {
                         platform: 'sensor',
-                        unique_id: '$deviceid-reserve_time',
-                        state_topic: '$this/reserve_time',
-                        name: 'Delay Wash time remaining',
-                        icon: 'mdi:clock-outline',
-                        device_class: 'duration',
-                        unit_of_measurement: 'min',
-                    },
-                    soil: {
-                        platform: 'sensor',
-                        unique_id: '$deviceid-soil',
-                        state_topic: '$this/soil',
-                        name: 'Soil level',
-                        icon: 'mdi:liquid-spot',
-                    },
-                    spin: {
-                        platform: 'sensor',
-                        unique_id: '$deviceid-spin',
-                        state_topic: '$this/spin',
-                        name: 'Spin',
-                        icon: 'mdi:autorenew',
-                    },
-                    temp: {
-                        platform: 'sensor',
-                        unique_id: '$deviceid-temp',
-                        state_topic: '$this/temp',
-                        name: 'Temperature',
-                        icon: 'mdi:thermometer',
-                    },
-                    extra_rinse: {
-                        platform: 'binary_sensor',
-                        unique_id: '$deviceid-extra_rinse',
-                        state_topic: '$this/extra_rinse',
-                        name: 'Extra rinse',
-                        icon: 'mdi:water-sync',
-                    },
-                    extra_rinse_count: {
-                        platform: 'sensor',
-                        unique_id: '$deviceid-extra_rinse_count',
-                        state_topic: '$this/extra_rinse_count',
-                        name: 'Extra rinse count',
-                        icon: 'mdi:water-sync',
+                        unique_id: '$deviceid-tub_clean_count',
+                        state_topic: '$this/tub_clean_count',
+                        name: 'Washes since Tub Clean',
+                        icon: 'mdi:counter',
                         state_class: 'measurement',
                     },
-                    pre_wash: {
-                        platform: 'binary_sensor',
-                        unique_id: '$deviceid-pre_wash',
-                        state_topic: '$this/pre_wash',
-                        name: 'Pre-wash',
-                        icon: 'mdi:water-sync',
-                    },
-                    steam: {
-                        platform: 'binary_sensor',
-                        unique_id: '$deviceid-steam',
-                        state_topic: '$this/steam',
-                        name: 'Steam',
-                        icon: 'mdi:kettle-steam',
-                    },
-                    cold_wash: {
-                        platform: 'binary_sensor',
-                        unique_id: '$deviceid-cold_wash',
-                        state_topic: '$this/cold_wash',
-                        name: 'Cold wash',
-                        icon: 'mdi:snowflake',
-                    },
-                    turbo_wash: {
-                        platform: 'binary_sensor',
-                        unique_id: '$deviceid-turbo_wash',
-                        state_topic: '$this/turbo_wash',
-                        name: 'TurboWash',
-                        icon: 'mdi:rocket-launch',
-                    },
-                    delay_wash: {
-                        platform: 'binary_sensor',
-                        unique_id: '$deviceid-delay_wash',
-                        state_topic: '$this/delay_wash',
-                        name: 'Delay Wash',
-                        icon: 'mdi:clock-plus-outline',
-                    },
-                    door: {
-                        platform: 'binary_sensor',
-                        unique_id: '$deviceid-door',
-                        state_topic: '$this/door',
-                        name: 'Door',
-                        device_class: 'door', // payload ON = open, OFF = closed
-                    },
-                    door_lock: {
-                        platform: 'binary_sensor',
-                        unique_id: '$deviceid-door_lock',
-                        state_topic: '$this/door_lock',
-                        name: 'Door lock',
-                        icon: 'mdi:lock', // NOT device_class 'lock' — that class is inverted (on = unlocked)
-                        entity_category: 'diagnostic',
-                    },
+                    // Soil/spin/temp, the option flags, door, door lock and Delay Wash time are only
+                    // decoded from 0xEC/0xEB frames, which this model hasn't been seen sending. They're
+                    // left out of discovery so they don't sit at Unknown in HA; processStatus still
+                    // publishes their state topics if a unit does send those frames.
                 },
             }),
         )
@@ -316,29 +263,61 @@ export default class Device extends AABBDevice {
         if (buf[1] === STATUS_FRAME_TYPE) return this.processStatus(buf, RECORD_B_OFFSET, STATUS_FRAME_LEN)
         if (buf[1] === SINGLE_STATUS_FRAME_TYPE)
             return this.processStatus(buf, SINGLE_RECORD_OFFSET, SINGLE_STATUS_FRAME_LEN)
-        if (buf[1] === CD_FRAME_TYPE)
-            return this.processTimeFrame(buf, CD_PHASE_OFFSET, CD_REMAINING_OFFSET, CD_TOTAL_OFFSET)
-        if (buf[1] === BD_FRAME_TYPE)
-            return this.processTimeFrame(buf, BD_PHASE_OFFSET, BD_REMAINING_OFFSET, BD_TOTAL_OFFSET)
-        // 0x31 (serial), 0x72/0xD8 (heartbeats) and anything else not yet decoded land here so they
-        // show up in the logs for future status-code hunting.
+        if (buf[1] === CD_FRAME_TYPE) return this.processDump(buf, 0)
+        if (buf[1] === BD_FRAME_TYPE) return this.processDump(buf, BD_SHIFT)
+        if (buf[1] === HEARTBEAT_FRAME_TYPE && buf.length > HEARTBEAT_STATE_OFFSET) return this.processHeartbeat(buf)
+        // 0x31 (serial), 0xD8 (counter burst), 0xE2 (end-of-cycle summary) and anything else not yet
+        // decoded land here so they show up in the logs for future status-code hunting.
         log('F3M2CYK__', 'unrecognized frame', buf.toString('hex'))
     }
 
-    // 0xCD/0xBD: only phase, remaining time and total time are decoded (course/soil/spin/temp/options
-    // are somewhere in the rest of the ~400-byte body but not pinned down yet).
-    private processTimeFrame(buf: Buffer, phaseOffset: number, remainingOffset: number, totalOffset: number) {
-        if (buf.length < totalOffset + 2) {
-            log('F3M2CYK__', 'time frame too short', buf.toString('hex'))
+    // 0xCD/0xBD full status dump: phase, remaining/total time, course and washes since Tub Clean
+    // (soil/spin/temp/options are somewhere in the rest of the body but not pinned down yet).
+    private processDump(buf: Buffer, shift: number) {
+        if (buf.length <= DUMP_TUB_CLEAN_COUNT_OFFSET + shift) {
+            log('F3M2CYK__', 'status dump too short', buf.toString('hex'))
             return
         }
-        const phase = buf[phaseOffset]
-        const isOff = phase === PHASE_OFF
+        const at = (offset: number) => buf[offset + shift]
+        const hm = (offset: number) => at(offset) * 60 + at(offset + 1)
 
-        this.publishProperty('power', isOff ? 'OFF' : 'ON')
-        this.publishProperty('status', STATUS.map(phase) ?? 'Running')
-        this.publishProperty('remaining_time', isOff ? 0 : buf.readUInt16BE(remainingOffset))
-        this.publishProperty('initial_time', isOff ? 0 : buf.readUInt16BE(totalOffset))
+        const phase = at(DUMP_PHASE_OFFSET)
+        // The last 0xBD of a cycle still carries the final phase (e.g. Spinning, 1 min left), and on
+        // one load it arrived after the 0x72 stop heartbeat, so treat it as the end of the cycle.
+        const cycleEnd = shift === BD_SHIFT && buf[BD_EVENT_OFFSET] === BD_EVENT_CYCLE_END
+        const total = hm(DUMP_TOTAL_OFFSET)
+
+        if (phase === PHASE_OFF) {
+            this.publishProperty('power', 'OFF')
+            this.publishProperty('status', STATUS.map(phase))
+            this.publishProperty('remaining_time', 0)
+            this.publishProperty('initial_time', 0)
+        } else if (cycleEnd || phase === PHASE_COMPLETE) {
+            this.publishProperty('power', 'OFF')
+            this.publishProperty('status', STATUS.map(PHASE_COMPLETE))
+            this.publishProperty('remaining_time', 0)
+            // the post-cycle 0xCD zeroes the total; keep the last known value in that case
+            if (total > 0) this.publishProperty('initial_time', total)
+        } else {
+            this.publishProperty('power', 'ON')
+            this.publishProperty('status', STATUS.map(phase) ?? 'Running')
+            this.publishProperty('remaining_time', hm(DUMP_REMAINING_OFFSET))
+            this.publishProperty('initial_time', total)
+        }
+
+        const course = at(DUMP_COURSE_OFFSET)
+        if (course !== 0) {
+            this.publishProperty('course', DUMP_COURSE.map(course) ?? `0x${course.toString(16).padStart(2, '0')}`)
+        }
+        this.publishProperty('tub_clean_count', at(DUMP_TUB_CLEAN_COUNT_OFFSET))
+    }
+
+    // 0x72: 0xC9 when a cycle starts/resumes, 0xC8 when it stops. The transient 0x00 that precedes
+    // the 0xC8 is ignored.
+    private processHeartbeat(buf: Buffer) {
+        const state = buf[HEARTBEAT_STATE_OFFSET]
+        if (state === HEARTBEAT_RUNNING) this.publishProperty('power', 'ON')
+        else if (state === HEARTBEAT_STOPPED) this.publishProperty('power', 'OFF')
     }
 
     private processStatus(buf: Buffer, recordOffset: number, expectedLen: number) {
