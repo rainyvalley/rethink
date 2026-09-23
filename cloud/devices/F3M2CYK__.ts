@@ -162,6 +162,7 @@ const COURSE = Enum.of({
 // (an 18-minute cycle that went straight to Rinsing).
 const DUMP_COURSE = Enum.of({
     Normal: 0x06,
+    'Heavy Duty': 0x07,
     'Tub Clean': 0x0d,
     Towels: 0x0e,
 })

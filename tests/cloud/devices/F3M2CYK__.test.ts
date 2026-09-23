@@ -118,6 +118,13 @@ const TOWELS_BD_CYCLE_END = buf(
 // Next power-on, 40 minutes later: placeholder 00 burst.
 const TOWELS_NEXT_POWER_ON_PLACEHOLDER = buf('AA0720D800FCBB')
 
+// ── Fifth capture: Heavy Duty (course 0x07), 2026-09-23 21:46Z, panel photo: Heavy Duty, Cold,
+// Medium spin, Light soil, 1:44 ─────────────────────────────────────────────────────────────────────
+
+const HEAVY_DUTY_BD_SELECTING = buf(
+    'AA0020BD0001019001020B05012C012C00000700010200010300008000006A000200000000000000001E000000001A00000000FF000000000000000000000000000000000000000000000000000000000000000000008300000000BB0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000017702580000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000C200000000300000000000000000000000000000000000000000000000000000ECBB',
+)
+
 // Real mystery frame, currently undecoded: an unidentified 0x7F type (~10 over 2 days).
 const MYSTERY_7F = buf('AA09207F010040C6BB')
 
@@ -300,6 +307,17 @@ describe(MODEL_ID, () => {
         assert.equal(p.tub_clean_count, 1) // previously overwritten with the stale 0
         thinq.emit('data', TOWELS_NEXT_POWER_ON_PLACEHOLDER)
         assert.equal(p.tub_clean_count, 1)
+    })
+
+    test('Heavy Duty: course and 1:44 estimate decode from the selecting 0xBD', () => {
+        const { ha, thinq } = makeDevice()
+        const p = ha.devices[DEVICE_ID].properties
+        thinq.emit('data', HEAVY_DUTY_BD_SELECTING)
+        assert.equal(p.course, 'Heavy Duty')
+        assert.equal(p.status, 'Selecting')
+        assert.equal(p.initial_time, 104)
+        assert.equal(p.remaining_time, 104)
+        assert.equal(p.tub_clean_count, 2)
     })
 
     // ── Ignored packet tests ──────────────────────────────────────────────────
