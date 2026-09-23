@@ -102,6 +102,22 @@ const COUNT_8 = buf('AA0720D808E4BB')
 const COUNT_7_AFTER_LOAD = buf('AA0720D807E5BB')
 const COUNT_RESET_AFTER_TUB_CLEAN = buf('AA0720D800FCBB')
 
+// ── Fourth capture: Towels (course 0x0e), 2026-09-23 ───────────────────────────────────────────────
+
+// Selecting, 1:01 estimate, washes-since-Tub-Clean = 0.
+const TOWELS_BD_SELECTING = buf(
+    'AA0020BD0001019001020B050101010100000E00030400030500000000006A00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001770258000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000082000000003000000000000000000000000000000000000000000000000000006EBB',
+)
+// Cycle end, in this order: 72 00, then the updated count (01), then the end-of-cycle 0xBD still
+// carrying the pre-cycle count (00) — the reverse of the Tub Clean's order.
+const TOWELS_HB_CYCLE_ENDING = buf('AA09207200000010BB')
+const TOWELS_COUNT_1 = buf('AA0720D801FFBB')
+const TOWELS_BD_CYCLE_END = buf(
+    'AA0020BD0003019001020B280001003A00000E00000000000500040080026A0000000000000001B10355555552001A1A1B1B00FFFFFFFF00084308430843084300000DF40DF40DF40DF40000009E009E009E009E00008383838300B8AA00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000401A20600000000040000000000017C029CF6DF03000B010000DFF80100310402BB0000000A3C15005D143202025C000000061D0500470D3202024E0000000B1A09003E133402014C0000001F731E001233310403B00000000C140400220B32020292000000041105001E09330101CE00000003280700800F00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000514045601000000822D002D003000000000000000000000000000000000000000000000000000004503010100040506073900000000FF015A0000000007181804031D17000704FD6F6E0000FDFD000000FD000007B1013C000010000E301100347400004018E4CC494D839A1A002DBB',
+)
+// Next power-on, 40 minutes later: placeholder 00 burst.
+const TOWELS_NEXT_POWER_ON_PLACEHOLDER = buf('AA0720D800FCBB')
+
 // Real mystery frame, currently undecoded: an unidentified 0x7F type (~10 over 2 days).
 const MYSTERY_7F = buf('AA09207F010040C6BB')
 
@@ -246,7 +262,9 @@ describe(MODEL_ID, () => {
         thinq.emit('data', COUNT_POWER_ON_PLACEHOLDER)
         assert.equal(p.tub_clean_count, 8)
 
-        // Tub Clean ends: the end-of-cycle 0xBD still reports the pre-cycle 8, the following 0xD8 resets it
+        // Tub Clean ends: 72 00, then the end-of-cycle 0xBD (stale pre-cycle 8, not published), then
+        // the 0xD8 reset
+        thinq.emit('data', HB_TRANSIENT_ZERO)
         thinq.emit('data', TC_BD_CYCLE_END)
         assert.equal(p.tub_clean_count, 8)
         thinq.emit('data', COUNT_RESET_AFTER_TUB_CLEAN)
@@ -258,10 +276,30 @@ describe(MODEL_ID, () => {
 
     test('0xD8 count after an ordinary load carries the incremented value (real capture)', () => {
         const { ha, thinq } = makeDevice()
-        thinq.emit('data', BD_SPINNING_LARGE) // load 1 end-of-cycle, count 6 at start
+        thinq.emit('data', BD_WASHING) // load 1, count 6 at start
         assert.equal(ha.devices[DEVICE_ID].properties.tub_clean_count, 6)
+        thinq.emit('data', BD_SPINNING_LARGE) // end-of-cycle 0xBD: stale count, not published
         thinq.emit('data', COUNT_7_AFTER_LOAD)
         assert.equal(ha.devices[DEVICE_ID].properties.tub_clean_count, 7)
+    })
+
+    test('Towels: course decodes, count survives the updated 0xD8 arriving before the end-of-cycle 0xBD', () => {
+        const { ha, thinq } = makeDevice()
+        const p = ha.devices[DEVICE_ID].properties
+
+        thinq.emit('data', TOWELS_BD_SELECTING)
+        assert.equal(p.course, 'Towels')
+        assert.equal(p.initial_time, 61)
+        assert.equal(p.tub_clean_count, 0)
+
+        thinq.emit('data', TOWELS_HB_CYCLE_ENDING)
+        thinq.emit('data', TOWELS_COUNT_1)
+        assert.equal(p.tub_clean_count, 1)
+        thinq.emit('data', TOWELS_BD_CYCLE_END)
+        assert.equal(p.status, 'Complete')
+        assert.equal(p.tub_clean_count, 1) // previously overwritten with the stale 0
+        thinq.emit('data', TOWELS_NEXT_POWER_ON_PLACEHOLDER)
+        assert.equal(p.tub_clean_count, 1)
     })
 
     // ── Ignored packet tests ──────────────────────────────────────────────────
