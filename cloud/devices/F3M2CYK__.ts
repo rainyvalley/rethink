@@ -83,7 +83,10 @@ const DUMP_RESERVE_OFFSET = 13
 // lit and clear on Sanitary, Rinse+Spin, Tub Clean and Allergiene with it off; Steam (0x04) set only on
 // Tub Clean and Allergiene, the two with the Steam lamp lit; Delay (0x02) set only on the delayed
 // Allergiene load; Extra Rinse (0x40) set on a Bright Whites load with the Extra Rinse lamp lit and
-// clear on all the others; Pre-wash (0x08) set only on a Delicates load with the Pre-wash lamp lit. TurboWash and Steam can clear once their stage is over (Steam cleared
+// clear on all the others; Pre-wash (0x08) set only on a Delicates load with the Pre-wash lamp lit.
+// Control Lock (0x01, this model's own bit — the 0xEC record has no such flag): set in the one report
+// taken while Control Lock was on during a Bedding load, clear before it was engaged and after it was
+// released. The washer keeps reporting while locked. TurboWash and Steam can clear once their stage is over (Steam cleared
 // when the Tub Clean started rinsing), so like soil/temp a cleared bit only counts before the cycle is
 // under way. Delay is a live state instead: it cleared when the Allergiene load's delay ran out.
 const DUMP_FLAGS_OFFSET = 24
@@ -93,6 +96,7 @@ const DUMP_EXTRA_RINSE_COUNT_OFFSET = 19
 // Second options byte: bit 0x01 = Fresh Care, set on the two loads photographed with the Fresh Care
 // lamp lit (Downloaded and Sportswear) and clear on every earlier load with it off. Bit 0x80 is set
 // once a cycle is running (likely the door lock, as rec[16] of the 0xEC/0xEB record) — not published.
+const DUMP_FLAG_CONTROL_LOCK = 0x01
 const DUMP_OPT2_OFFSET = 25
 const DUMP_OPT2_FRESH_CARE = 0x01
 // ezDispense Detergent Level setting (the amount auto-dispensed, set with the Detergent Level button;
@@ -208,6 +212,7 @@ const COURSE = Enum.of({
 const DUMP_COURSE = Enum.of({
     Sanitary: 0x02,
     Allergiene: 0x03,
+    Bedding: 0x04,
     'Perm. Press': 0x05,
     'Bright Whites': 0x08,
     Delicates: 0x0a,
@@ -376,6 +381,13 @@ export default class Device extends AABBDevice {
                         name: 'Fresh Care',
                         icon: 'mdi:tshirt-crew-outline',
                     },
+                    control_lock: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-control_lock',
+                        state_topic: '$this/control_lock',
+                        name: 'Control Lock',
+                        icon: 'mdi:lock',
+                    },
                     delay_wash: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-delay_wash',
@@ -491,6 +503,8 @@ export default class Device extends AABBDevice {
             const extraRinses = at(DUMP_EXTRA_RINSE_COUNT_OFFSET)
             if (extraRinses !== 0 || presetting) this.publishProperty('extra_rinse_count', extraRinses)
             this.publishProperty('delay_wash', (flags & FLAG_DELAY_ACTIVE) !== 0 ? 'ON' : 'OFF')
+            // a live state like Delay, not a setting: follows the bit
+            this.publishProperty('control_lock', (flags & DUMP_FLAG_CONTROL_LOCK) !== 0 ? 'ON' : 'OFF')
             this.publishProperty('reserve_time', hm(DUMP_RESERVE_OFFSET))
 
             if (buf.length > DUMP_DETERGENT_OFFSET + shift) {
