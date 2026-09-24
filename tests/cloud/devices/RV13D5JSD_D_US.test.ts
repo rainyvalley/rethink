@@ -42,6 +42,9 @@ const E2_DELICATES_LESS = buf('AA2330E2031B32000F000F050002020000000000002900000
 // Tenth (2026-09-24 18:15Z): Small Load (0x09), 0:35, dry level on the step between Normal and Very
 // (0x04, "More"), High, Wrinkle Care lit — rec[16] = 0x10, zero on every other cycle.
 const E2_SMALL_LOAD_WRINKLE_CARE = buf('AA2330E2031B32002300230900040500000000001029000013010000007200000013BB')
+// Eleventh (2026-09-24 18:25Z): Sportswear (0x0b), 0:25, Normal, Medium, Reduce Static lit —
+// rec[16] = 0x02, zero on every cycle without it.
+const E2_SPORTSWEAR_REDUCE_STATIC = buf('AA2330E2031B32001900190B0003030000000000022900002401000005720000006CBB')
 const E2_STEAM_CYCLE = buf('AA2330E2031B32000A000A15000004000000000000A90000420100000272000000E9BB')
 
 // A real 0xEB single-record frame for the sibling RV13U6AM8W_D_US_WIFI model (identical processRecord
@@ -80,6 +83,7 @@ describe(MODEL_ID, () => {
             'energy_saver',
             'turbo_steam',
             'wrinkle_care',
+            'reduce_static',
         ]) {
             assert.ok(components[c], `component ${c} present`)
         }
@@ -173,7 +177,16 @@ describe(MODEL_ID, () => {
         assert.equal(props.temp, 'High')
         assert.equal(props.wrinkle_care, 'ON')
         assert.equal(props.turbo_steam, 'OFF')
+        assert.equal(props.reduce_static, 'OFF')
         thinq.emit('data', E2_DELICATES_LESS)
+        assert.equal(props.wrinkle_care, 'OFF')
+
+        thinq.emit('data', E2_SPORTSWEAR_REDUCE_STATIC)
+        assert.equal(props.cycle, 'Sportswear')
+        assert.equal(props.cycle_time, 25)
+        assert.equal(props.dry_level, 'Normal')
+        assert.equal(props.temp, 'Medium')
+        assert.equal(props.reduce_static, 'ON')
         assert.equal(props.wrinkle_care, 'OFF')
 
         // TurboSteam: set on both Heavy Duty + TurboSteam cycles, clear on regular cycles without
