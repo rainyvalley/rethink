@@ -31,9 +31,11 @@ import log from '@/util/logging'
 //                     0x03/Medium, each matching the panel photo
 //          rec[17]    bit 0x02 = Energy Saver — set (0xab) only on the one cycle with the Energy Saver
 //                     lamp lit; 0xa9/0x29 on three cycles photographed with it off, and on Towels.
-//                     0x04 was set only on a Heavy Duty cycle with the TurboSteam lamp lit, but not
-//                     on Steam Fresh (also lit), so it isn't published yet. 0x80 was clear on the
-//                     last two cycles only. The other bits aren't identified.
+//                     bit 0x04 = the TurboSteam option — set on both Heavy Duty cycles run with
+//                     TurboSteam on, clear on the five regular cycles run without it. It's also
+//                     clear on Steam Fresh, a dedicated steam cycle (its lamp shows the built-in
+//                     steam, and the cycle code already identifies it). The other bits aren't
+//                     identified.
 //        These are published as the "last cycle" settings, since this dryer only reports them once
 //        the cycle is over.
 // Live remaining time needs the appliance to be sending 0xEC/0xEB/similar status records with a
@@ -60,6 +62,7 @@ const SUMMARY_DRY_LEVEL = 9
 const SUMMARY_TEMP = 10
 const SUMMARY_FLAGS = 17
 const SUMMARY_FLAG_ENERGY_SAVER = 0x02
+const SUMMARY_FLAG_TURBO_STEAM = 0x04
 
 const STATUS = Enum.of({
     Off: 0x00,
@@ -161,6 +164,13 @@ export default class Device extends AABBDevice {
                         device_class: 'enum',
                         options: DRY_LEVELS.options,
                     },
+                    turbo_steam: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-turbo_steam',
+                        state_topic: '$this/turbo_steam',
+                        name: 'Last cycle TurboSteam',
+                        icon: 'mdi:kettle-steam',
+                    },
                     energy_saver: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-energy_saver',
@@ -230,5 +240,6 @@ export default class Device extends AABBDevice {
         this.publishProperty('temp', TEMPS.map(rec[SUMMARY_TEMP]))
         this.publishProperty('dry_level', DRY_LEVELS.map(rec[SUMMARY_DRY_LEVEL]))
         this.publishProperty('energy_saver', (rec[SUMMARY_FLAGS] & SUMMARY_FLAG_ENERGY_SAVER) !== 0 ? 'ON' : 'OFF')
+        this.publishProperty('turbo_steam', (rec[SUMMARY_FLAGS] & SUMMARY_FLAG_TURBO_STEAM) !== 0 ? 'ON' : 'OFF')
     }
 }

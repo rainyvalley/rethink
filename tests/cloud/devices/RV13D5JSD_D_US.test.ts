@@ -34,6 +34,8 @@ const E2_NORMAL_ENERGY_SAVER_OFF = buf('AA2330E2031B3200290029030003040000000000
 const E2_HEAVY_DUTY_HIGH = buf('AA2330E2031B3200360036010003050000000000002D0000EC010000007200000065BB')
 // Seventh: Towels, 0:49, Damp dry level, Med High, TurboSteam and Energy Saver off (panel photo).
 const E2_TOWELS_DAMP = buf('AA2330E2031B32003100310200010400000000000029000012010000007200000013BB')
+// Eighth (2026-09-24 17:34Z): Heavy Duty with TurboSteam again — rec[17] 0x04 set a second time.
+const E2_HEAVY_DUTY_TURBO_STEAM_2 = buf('AA2330E2031B3200360036010003050000000000002D000010010000007200000001BB')
 const E2_STEAM_CYCLE = buf('AA2330E2031B32000A000A15000004000000000000A90000420100000272000000E9BB')
 
 // A real 0xEB single-record frame for the sibling RV13U6AM8W_D_US_WIFI model (identical processRecord
@@ -62,7 +64,16 @@ describe(MODEL_ID, () => {
         const cfg = ha.devices[DEVICE_ID].config
         assert.ok(cfg, 'config published on construction')
         const components = cfg!.components as Record<string, Record<string, unknown>>
-        for (const c of ['power', 'status', 'cycle', 'cycle_time', 'temp', 'dry_level', 'energy_saver']) {
+        for (const c of [
+            'power',
+            'status',
+            'cycle',
+            'cycle_time',
+            'temp',
+            'dry_level',
+            'energy_saver',
+            'turbo_steam',
+        ]) {
             assert.ok(components[c], `component ${c} present`)
         }
         // 0xEC/0xEB-only fields this model never sends must not be advertised (they'd sit at Unknown)
@@ -141,6 +152,21 @@ describe(MODEL_ID, () => {
         assert.equal(props.dry_level, 'Damp')
         assert.equal(props.temp, 'Med High')
         assert.equal(props.energy_saver, 'OFF')
+
+        // TurboSteam: set on both Heavy Duty + TurboSteam cycles, clear on regular cycles without
+        // it and on the dedicated Steam Fresh cycle
+        for (const [frame, turboSteam] of [
+            [E2_HEAVY_DUTY_HIGH, 'ON'],
+            [E2_HEAVY_DUTY_TURBO_STEAM_2, 'ON'],
+            [E2_END_OF_CYCLE, 'OFF'],
+            [E2_NORMAL_ENERGY_SAVER_OFF, 'OFF'],
+            [E2_TOWELS_DAMP, 'OFF'],
+            [E2_BEDDING, 'OFF'],
+            [E2_STEAM_CYCLE, 'OFF'],
+        ] as const) {
+            thinq.emit('data', frame)
+            assert.equal(props.turbo_steam, turboSteam)
+        }
 
         // phase/power come from the 0x72 heartbeat, not the summary
         assert.equal(props.status, undefined)
