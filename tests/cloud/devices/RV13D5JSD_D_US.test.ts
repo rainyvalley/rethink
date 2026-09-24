@@ -50,6 +50,9 @@ const E2_PERM_PRESS = buf('AA2330E2031B32002000200400030300000000000029000017010
 // Thirteenth (2026-09-24 18:43Z): Antibacterial (0x08), 1:10, Very, High — both locked by the cycle
 // (panel photo). Stopped after 5 min with a dry item.
 const E2_ANTIBACTERIAL = buf('AA2330E2031B32010A010A0800050500000000000029000014010000007200000052BB')
+// Fourteenth (2026-09-24 19:30Z): Steam Sanitary (0x16), 0:31, no dry level, High (panel photo);
+// TurboSteam lamp lit, but rec[17] 0x04 is clear, as on Steam Fresh.
+const E2_STEAM_SANITARY = buf('AA2330E2031B32001F001F16000005000000000000290000A3010000007200000092BB')
 const E2_STEAM_CYCLE = buf('AA2330E2031B32000A000A15000004000000000000A90000420100000272000000E9BB')
 
 // A real 0xEB single-record frame for the sibling RV13U6AM8W_D_US_WIFI model (identical processRecord
@@ -207,8 +210,14 @@ describe(MODEL_ID, () => {
         assert.equal(props.dry_level, 'Very')
         assert.equal(props.temp, 'High')
 
+        thinq.emit('data', E2_STEAM_SANITARY)
+        assert.equal(props.cycle, 'Steam Sanitary')
+        assert.equal(props.cycle_time, 31)
+        assert.equal(props.dry_level, 'None')
+        assert.equal(props.temp, 'High')
+
         // TurboSteam: set on both Heavy Duty + TurboSteam cycles, clear on regular cycles without
-        // it and on the dedicated Steam Fresh cycle
+        // it and on the dedicated Steam Fresh and Steam Sanitary cycles
         for (const [frame, turboSteam] of [
             [E2_HEAVY_DUTY_HIGH, 'ON'],
             [E2_HEAVY_DUTY_TURBO_STEAM_2, 'ON'],
@@ -217,6 +226,7 @@ describe(MODEL_ID, () => {
             [E2_TOWELS_DAMP, 'OFF'],
             [E2_BEDDING, 'OFF'],
             [E2_STEAM_CYCLE, 'OFF'],
+            [E2_STEAM_SANITARY, 'OFF'],
         ] as const) {
             thinq.emit('data', frame)
             assert.equal(props.turbo_steam, turboSteam)

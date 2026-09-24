@@ -24,7 +24,8 @@ import log from '@/util/logging'
 //          rec[5..6]  same value as rec[3..4] in every capture; not published
 //          rec[7]     cycle — 0x03 on a load with Normal dry level; 0x07 = Bedding and 0x01 = Heavy
 //                     Duty (panel photos, as in the sibling map), 0x05 = Delicates and 0x04 = Perm.
-//                     Press (as in the map); 0x02 = Towels and 0x15 = Steam Fresh (confirmed by the user);
+//                     Press (as in the map); 0x02 = Towels and 0x15 = Steam Fresh (confirmed by the user),
+//                     0x16 = Steam Sanitary (panel photo);
 //                     unmapped codes are published as their raw hex value
 //          rec[9]     dry level — 0x01/Damp, 0x02/Less (the step between Damp and Normal),
 //                     0x03/Normal, 0x04/More (the step between Normal and Very), 0x05/Very and
@@ -39,8 +40,8 @@ import log from '@/util/logging'
 //                     lamp lit; 0xa9/0x29 on three cycles photographed with it off, and on Towels.
 //                     bit 0x04 = the TurboSteam option — set on both Heavy Duty cycles run with
 //                     TurboSteam on, clear on the five regular cycles run without it. It's also
-//                     clear on Steam Fresh, a dedicated steam cycle (its lamp shows the built-in
-//                     steam, and the cycle code already identifies it). The other bits aren't
+//                     clear on Steam Fresh and Steam Sanitary, the dedicated steam cycles (the lamp
+//                     shows the built-in steam, and the cycle code already identifies it). The other bits aren't
 //                     identified.
 //        These are published as the "last cycle" settings, since this dryer only reports them once
 //        the cycle is over.
@@ -97,6 +98,7 @@ const CYCLES = Enum.of({
     'Small Load': 0x09,
     Sportswear: 0x0b,
     'Steam Fresh': 0x15,
+    'Steam Sanitary': 0x16,
 })
 
 const TEMPS = Enum.of({
