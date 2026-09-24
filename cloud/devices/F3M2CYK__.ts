@@ -68,9 +68,10 @@ const DUMP_COURSE_OFFSET = 15
 // end. There is no days-based counter in any frame.
 const DUMP_TUB_CLEAN_COUNT_OFFSET = 29
 // Soil, temp and spin, using the same SOIL/TEMP/SPIN indices as the 0xEC/0xEB record. Confirmed
-// against five panel photos: Normal/Warm/High/Normal soil reads 03/04/04, Heavy Duty/Cold/Medium/Light
+// against six panel photos: Normal/Warm/High/Normal soil reads 03/04/04, Heavy Duty/Cold/Medium/Light
 // soil reads 01/02/03, Sanitary/Extra Hot/High/Normal soil reads 03/07/04, Bright Whites/Hot/Extra
-// High/Heavy soil reads 05/06/05, Delicates/Tap Cold/Low/Light-Normal soil reads 02/01/02. Other loads fit the same scales (Normal and Towels read Warm with
+// High/Heavy soil reads 05/06/05, Delicates/Tap Cold/Low/Light-Normal soil reads 02/01/02, Perm.
+// Press/Tap Cold/Medium/Normal-Heavy soil reads 04/01/03. Other loads fit the same scales (Normal and Towels read Warm with
 // Normal soil, Rinse+Spin reads Cold with no soil, Tub Clean reads neither). 0x00 means "not applicable": soil
 // clears when Rinsing starts and temp when Spinning starts, while spin holds for the whole cycle.
 // Delay Wash time remaining, [hour][minute], counting down while phase == Delay Wash (0x0a); 00 00
@@ -199,6 +200,7 @@ const COURSE = Enum.of({
 const DUMP_COURSE = Enum.of({
     Sanitary: 0x02,
     Allergiene: 0x03,
+    'Perm. Press': 0x05,
     'Bright Whites': 0x08,
     Delicates: 0x0a,
     Normal: 0x06,
