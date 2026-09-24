@@ -157,6 +157,13 @@ const ALLERGIENE_BD_DELAY_OVER = buf(
     'AA0020BD0002019001020B0A0127012700000300000000020400010480026A000400000000000003002A000000001D00000000FF000000000000000000000000000000000000000000000000000000000000000000008400000000BB3A0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010054060000000000000000032E017B027D000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000082000000003000000000000000000000000000000000000000000000000000002EBB',
 )
 
+// ── Ninth capture: Bright Whites (course 0x08), 2026-09-24 05:02Z, panel photo: Bright Whites, Hot,
+// Extra High, Heavy soil, TurboWash and Extra Rinse lit, detergent 1 bar ──────────────────────────────
+
+const BRIGHT_WHITES_BD_SELECTING = buf(
+    'AA0020BD0001019001020B05003B003B0000080005060102050000C000206A000500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000017702580000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000420000000030000000000000000000000000000000000000000000000000000005BB',
+)
+
 // Real mystery frame, currently undecoded: an unidentified 0x7F type (~10 over 2 days).
 const MYSTERY_7F = buf('AA09207F010040C6BB')
 
@@ -188,11 +195,12 @@ describe(MODEL_ID, () => {
             'delay_wash',
             'reserve_time',
             'detergent_level',
+            'extra_rinse',
         ]) {
             assert.ok(components[c], `component ${c} present`)
         }
         // 0xEC/0xEB-only fields this model never sends must not be advertised (they'd sit at Unknown)
-        for (const c of ['door', 'door_lock', 'extra_rinse', 'pre_wash', 'cold_wash']) {
+        for (const c of ['door', 'door_lock', 'pre_wash', 'cold_wash']) {
             assert.equal(components[c], undefined, `component ${c} absent`)
         }
         assert.equal(components.initial_time.device_class, 'duration')
@@ -449,6 +457,21 @@ describe(MODEL_ID, () => {
             assert.equal(p.reserve_time, 0)
             assert.equal(p.detergent_level, detergent)
         }
+    })
+
+    test('Bright Whites: Hot, Extra High, Heavy, Extra Rinse and one detergent bar (real capture)', () => {
+        const { ha, thinq } = makeDevice()
+        const p = ha.devices[DEVICE_ID].properties
+        thinq.emit('data', BRIGHT_WHITES_BD_SELECTING)
+        assert.equal(p.course, 'Bright Whites')
+        assert.equal(p.initial_time, 59)
+        assert.equal(p.temp, 'Hot')
+        assert.equal(p.spin, 'Extra High')
+        assert.equal(p.soil, 'Heavy')
+        assert.equal(p.turbo_wash, 'ON')
+        assert.equal(p.extra_rinse, 'ON')
+        assert.equal(p.steam, 'OFF')
+        assert.equal(p.detergent_level, 'Less')
     })
 
     test('soil/temp/spin decode against the load 1 panel photo and hold once their stage has cleared them', () => {
