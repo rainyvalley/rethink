@@ -53,6 +53,9 @@ const E2_ANTIBACTERIAL = buf('AA2330E2031B32010A010A0800050500000000000029000014
 // Fourteenth (2026-09-24 19:30Z): Steam Sanitary (0x16), 0:31, no dry level, High (panel photo);
 // TurboSteam lamp lit, but rec[17] 0x04 is clear, as on Steam Fresh.
 const E2_STEAM_SANITARY = buf('AA2330E2031B32001F001F16000005000000000000290000A3010000007200000092BB')
+// Fifteenth (2026-09-24 20:47Z): Air Dry (0x11, as in the map), 0:30, no dry level, temp 0x00 (no
+// temp lamp lit — Air Dry has no heat) (panel photo).
+const E2_AIR_DRY = buf('AA2330E2031B32001E001E110000000000000000002900007A0100000072000000C7BB')
 const E2_STEAM_CYCLE = buf('AA2330E2031B32000A000A15000004000000000000A90000420100000272000000E9BB')
 
 // A real 0xEB single-record frame for the sibling RV13U6AM8W_D_US_WIFI model (identical processRecord
@@ -209,6 +212,12 @@ describe(MODEL_ID, () => {
         assert.equal(props.cycle_time, 70)
         assert.equal(props.dry_level, 'Very')
         assert.equal(props.temp, 'High')
+
+        thinq.emit('data', E2_AIR_DRY)
+        assert.equal(props.cycle, 'Air Dry')
+        assert.equal(props.cycle_time, 30)
+        assert.equal(props.dry_level, 'None')
+        assert.equal(props.temp, 'Off')
 
         thinq.emit('data', E2_STEAM_SANITARY)
         assert.equal(props.cycle, 'Steam Sanitary')
