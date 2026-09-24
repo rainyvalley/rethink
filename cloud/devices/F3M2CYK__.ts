@@ -71,7 +71,7 @@ const DUMP_TUB_CLEAN_COUNT_OFFSET = 29
 // against six panel photos: Normal/Warm/High/Normal soil reads 03/04/04, Heavy Duty/Cold/Medium/Light
 // soil reads 01/02/03, Sanitary/Extra Hot/High/Normal soil reads 03/07/04, Bright Whites/Hot/Extra
 // High/Heavy soil reads 05/06/05, Delicates/Tap Cold/Low/Light-Normal soil reads 02/01/02, Perm.
-// Press/Tap Cold/Medium/Normal-Heavy soil reads 04/01/03. Other loads fit the same scales (Normal and Towels read Warm with
+// Press/Tap Cold/Medium/Normal-Heavy soil reads 04/01/03. No Spin (01) was seen on a Speed Wash load. Other loads fit the same scales (Normal and Towels read Warm with
 // Normal soil, Rinse+Spin reads Cold with no soil, Tub Clean reads neither). 0x00 means "not applicable": soil
 // clears when Rinsing starts and temp when Spinning starts, while spin holds for the whole cycle.
 // Delay Wash time remaining, [hour][minute], counting down while phase == Delay Wash (0x0a); 00 00
@@ -211,6 +211,7 @@ const DUMP_COURSE = Enum.of({
     'Perm. Press': 0x05,
     'Bright Whites': 0x08,
     Delicates: 0x0a,
+    'Speed Wash': 0x0c,
     Normal: 0x06,
     'Heavy Duty': 0x07,
     'Tub Clean': 0x0d,
