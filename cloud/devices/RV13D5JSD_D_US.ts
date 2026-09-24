@@ -25,12 +25,13 @@ import log from '@/util/logging'
 //          rec[7]     cycle — 0x03 on a load with Normal dry level; 0x07 = Bedding and 0x01 = Heavy
 //                     Duty (panel photos, as in the sibling map), 0x05 = Delicates and 0x04 = Perm.
 //                     Press (as in the map); 0x02 = Towels and 0x15 = Steam Fresh (confirmed by the user),
-//                     0x16 = Steam Sanitary and 0x11 = Air Dry (panel photos);
+//                     0x16 = Steam Sanitary, 0x11 = Air Dry and
+//                     0x12 = Manual (Time Dry on the Manual Dry dial position) (panel photos);
 //                     unmapped codes are published as their raw hex value
 //          rec[9]     dry level — 0x01/Damp, 0x02/Less (the step between Damp and Normal),
 //                     0x03/Normal, 0x04/More (the step between Normal and Very), 0x05/Very and
 //                     0x00/none (steam cycle, no dry-level lamp lit)
-//          rec[10]    temp — 0x05/High, 0x04/Med High (the unlabeled lamp between High and Medium) and
+//          rec[10]    temp — 0x01/Ultra Low (Manual + Time Dry, panel photo), 0x05/High, 0x04/Med High (the unlabeled lamp between High and Medium) and
 //                     0x03/Medium, each matching the panel photo
 //          rec[16]    options: bit 0x10 = Wrinkle Care — set only on a Small Load cycle photographed
 //                     with the Wrinkle Care lamp lit (and the drum restarted after the cycle for the

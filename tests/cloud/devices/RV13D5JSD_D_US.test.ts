@@ -56,6 +56,10 @@ const E2_STEAM_SANITARY = buf('AA2330E2031B32001F001F16000005000000000000290000A
 // Fifteenth (2026-09-24 20:47Z): Air Dry (0x11, as in the map), 0:30, no dry level, temp 0x00 (no
 // temp lamp lit — Air Dry has no heat) (panel photo).
 const E2_AIR_DRY = buf('AA2330E2031B32001E001E110000000000000000002900007A0100000072000000C7BB')
+// Sixteenth (2026-09-24 21:33Z): Manual Dry with Time Dry 40 min, Ultra Low (0x01, first sighting),
+// Control Lock on (panel photo). rec[11] = 0x03, zero on every earlier cycle — probably the Time Dry
+// step (20/30/40/50/60 lamps -> 40 = 3rd), not published; nothing else changed with the lock on.
+const E2_MANUAL_TIME_DRY_ULTRA_LOW = buf('AA2330E2031B320028002812000001030000000000290000A3010000007200000081BB')
 const E2_STEAM_CYCLE = buf('AA2330E2031B32000A000A15000004000000000000A90000420100000272000000E9BB')
 
 // A real 0xEB single-record frame for the sibling RV13U6AM8W_D_US_WIFI model (identical processRecord
@@ -218,6 +222,12 @@ describe(MODEL_ID, () => {
         assert.equal(props.cycle_time, 30)
         assert.equal(props.dry_level, 'None')
         assert.equal(props.temp, 'Off')
+
+        thinq.emit('data', E2_MANUAL_TIME_DRY_ULTRA_LOW)
+        assert.equal(props.cycle, 'Manual')
+        assert.equal(props.cycle_time, 40)
+        assert.equal(props.dry_level, 'None')
+        assert.equal(props.temp, 'Ultra Low')
 
         thinq.emit('data', E2_STEAM_SANITARY)
         assert.equal(props.cycle, 'Steam Sanitary')
