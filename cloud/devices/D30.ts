@@ -213,7 +213,8 @@ export default class Device extends AABBDevice {
     //            runs (Night Dry lamp lit, both followed by the process 0x06 phase), clear on a
     //            2026-09-23 Normal run with the lamp off (no 0x06 phase followed), and set again on
     //            a 2026-09-24 Turbo run with the lamp lit. Only reported while a course is active.
-    //   [14]     options bitfield: bit 1 (0x02) = energy saver — verified 2026-09-18.
+    //   [14]     options bitfield: bit 1 (0x02) = energy saver — verified 2026-09-18, and on an
+    //            LDT54788D 2026-09-24 (Normal course, the only option set).
     //            bit 6 (0x40) = half load, bit 2 (0x04) = extra dry — verified 2026-09-23: on a
     //            Delicate course, selecting Half Load set 0x40 and cut the estimate 1:54 -> 1:43,
     //            then Extra Dry set 0x04 and raised it to 2:03 (both lamps lit in the panel photo).

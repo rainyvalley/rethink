@@ -25,10 +25,11 @@ const SAMPLE_EB_STARTING = buf('AA2032EB0018010000030E0200030E0000F2180200000000
 // Running / Washing, Heavy, 3:14 initial/remaining, door closed, rinse aid ok.
 const SAMPLE_EB_RUNNING_WASHING = buf('AA2032EB0018020200030E0200030E0000F018020000000000000000000460BB')
 
-// Same as SAMPLE_EB_RUNNING_WASHING but with the energy-saver option bit (0x02) also set.
-// Synthetic: no real capture in raw-48h.log has this bit set, so it's derived from the
-// real frame above with only optionBits changed (and checksum recomputed).
-const SAMPLE_EB_ENERGY_SAVER = buf('AA2032EB0018020200030E0200030E0000F01A020000000000000000000462BB')
+// Real capture (2026-09-24 17:32Z): Normal course started with Energy Saver on — option bits 0x02,
+// the only option set; Night Dry off.
+const SAMPLE_EC_NORMAL_ENERGY_SAVER = buf(
+    'AA3A32EC0018010000023205000232000072020200000000000000000004001802020002320500023200007002020000000000000000000456BB',
+)
 
 // ── Real captures — 0xEC (dual record, current = second) ────────────────────
 
@@ -226,10 +227,15 @@ describe(MODEL_ID, () => {
         assert.equal(props.energy_saver, 'OFF')
     })
 
-    test('energy-saver option bit publishes ON while active', () => {
+    test('energy-saver option bit publishes ON while active (real capture)', () => {
         const { ha, thinq } = makeDevice()
-        thinq.emit('data', SAMPLE_EB_ENERGY_SAVER)
-        assert.equal(ha.devices[DEVICE_ID].properties.energy_saver, 'ON')
+        thinq.emit('data', SAMPLE_EC_NORMAL_ENERGY_SAVER)
+        const props = ha.devices[DEVICE_ID].properties
+        assert.equal(props.current_course, 'Normal')
+        assert.equal(props.run_state, 'Running')
+        assert.equal(props.energy_saver, 'ON')
+        assert.equal(props.high_temp, 'OFF')
+        assert.equal(props.night_dry, 'OFF')
     })
 
     test('Half Load and Extra Dry option bits decode on a Delicate course (real captures)', () => {
