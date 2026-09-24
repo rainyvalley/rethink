@@ -39,6 +39,9 @@ const E2_HEAVY_DUTY_TURBO_STEAM_2 = buf('AA2330E2031B320036003601000305000000000
 // Ninth (2026-09-24 17:56Z): Delicates (0x05), 0:15, dry level on the step between Damp and Normal
 // (0x02, "Less"), temp 0x02 (Low, the course default), Reduce Static not active.
 const E2_DELICATES_LESS = buf('AA2330E2031B32000F000F050002020000000000002900000E010000007200000055BB')
+// Tenth (2026-09-24 18:15Z): Small Load (0x09), 0:35, dry level on the step between Normal and Very
+// (0x04, "More"), High, Wrinkle Care lit — rec[16] = 0x10, zero on every other cycle.
+const E2_SMALL_LOAD_WRINKLE_CARE = buf('AA2330E2031B32002300230900040500000000001029000013010000007200000013BB')
 const E2_STEAM_CYCLE = buf('AA2330E2031B32000A000A15000004000000000000A90000420100000272000000E9BB')
 
 // A real 0xEB single-record frame for the sibling RV13U6AM8W_D_US_WIFI model (identical processRecord
@@ -76,6 +79,7 @@ describe(MODEL_ID, () => {
             'dry_level',
             'energy_saver',
             'turbo_steam',
+            'wrinkle_care',
         ]) {
             assert.ok(components[c], `component ${c} present`)
         }
@@ -161,6 +165,16 @@ describe(MODEL_ID, () => {
         assert.equal(props.cycle_time, 15)
         assert.equal(props.dry_level, 'Less')
         assert.equal(props.temp, 'Low')
+
+        thinq.emit('data', E2_SMALL_LOAD_WRINKLE_CARE)
+        assert.equal(props.cycle, 'Small Load')
+        assert.equal(props.cycle_time, 35)
+        assert.equal(props.dry_level, 'More')
+        assert.equal(props.temp, 'High')
+        assert.equal(props.wrinkle_care, 'ON')
+        assert.equal(props.turbo_steam, 'OFF')
+        thinq.emit('data', E2_DELICATES_LESS)
+        assert.equal(props.wrinkle_care, 'OFF')
 
         // TurboSteam: set on both Heavy Duty + TurboSteam cycles, clear on regular cycles without
         // it and on the dedicated Steam Fresh cycle

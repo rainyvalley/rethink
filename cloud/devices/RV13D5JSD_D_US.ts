@@ -26,9 +26,13 @@ import log from '@/util/logging'
 //                     Duty (panel photos, as in the sibling map), 0x05 = Delicates (as in the map); 0x02 = Towels and 0x15 = Steam Fresh (confirmed by the user);
 //                     unmapped codes are published as their raw hex value
 //          rec[9]     dry level — 0x01/Damp, 0x02/Less (the step between Damp and Normal),
-//                     0x03/Normal, 0x05/Very and 0x00/none (steam cycle, no dry-level lamp lit)
+//                     0x03/Normal, 0x04/More (the step between Normal and Very), 0x05/Very and
+//                     0x00/none (steam cycle, no dry-level lamp lit)
 //          rec[10]    temp — 0x05/High, 0x04/Med High (the unlabeled lamp between High and Medium) and
 //                     0x03/Medium, each matching the panel photo
+//          rec[16]    bit 0x10 = Wrinkle Care — set only on a Small Load cycle photographed with the
+//                     Wrinkle Care lamp lit (and the drum restarted after the cycle for the
+//                     wrinkle-care tumble); 0x00 on all nine earlier cycles.
 //          rec[17]    bit 0x02 = Energy Saver — set (0xab) only on the one cycle with the Energy Saver
 //                     lamp lit; 0xa9/0x29 on three cycles photographed with it off, and on Towels.
 //                     bit 0x04 = the TurboSteam option — set on both Heavy Duty cycles run with
@@ -60,6 +64,8 @@ const SUMMARY_TIME_MIN = 4
 const SUMMARY_CYCLE = 7
 const SUMMARY_DRY_LEVEL = 9
 const SUMMARY_TEMP = 10
+const SUMMARY_OPTIONS = 16
+const SUMMARY_OPTION_WRINKLE_CARE = 0x10
 const SUMMARY_FLAGS = 17
 const SUMMARY_FLAG_ENERGY_SAVER = 0x02
 const SUMMARY_FLAG_TURBO_STEAM = 0x04
@@ -84,6 +90,7 @@ const CYCLES = Enum.of({
     Manual: 0x12,
     // confirmed on RV13D5JSD_D_US (not present on the model this map came from)
     Towels: 0x02,
+    'Small Load': 0x09,
     'Steam Fresh': 0x15,
 })
 
@@ -164,6 +171,13 @@ export default class Device extends AABBDevice {
                         device_class: 'enum',
                         options: DRY_LEVELS.options,
                     },
+                    wrinkle_care: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-wrinkle_care',
+                        state_topic: '$this/wrinkle_care',
+                        name: 'Last cycle Wrinkle Care',
+                        icon: 'mdi:tshirt-crew-outline',
+                    },
                     turbo_steam: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-turbo_steam',
@@ -241,5 +255,6 @@ export default class Device extends AABBDevice {
         this.publishProperty('dry_level', DRY_LEVELS.map(rec[SUMMARY_DRY_LEVEL]))
         this.publishProperty('energy_saver', (rec[SUMMARY_FLAGS] & SUMMARY_FLAG_ENERGY_SAVER) !== 0 ? 'ON' : 'OFF')
         this.publishProperty('turbo_steam', (rec[SUMMARY_FLAGS] & SUMMARY_FLAG_TURBO_STEAM) !== 0 ? 'ON' : 'OFF')
+        this.publishProperty('wrinkle_care', (rec[SUMMARY_OPTIONS] & SUMMARY_OPTION_WRINKLE_CARE) !== 0 ? 'ON' : 'OFF')
     }
 }
