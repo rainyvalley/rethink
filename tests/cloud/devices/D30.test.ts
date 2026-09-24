@@ -123,6 +123,11 @@ const SAMPLE_EC_EXPRESS_WASHING = buf(
     'AA3A32EC00180100000022080000220000F200020000000000000000000400180202000022080000220000F0000200000000000000000004E8BB',
 )
 
+// Same Express selection, 20 s earlier: Control Lock held for ~16 s (user-confirmed), status bit 0x01.
+const SAMPLE_EC_EXPRESS_CONTROL_LOCK = buf(
+    'AA3A32EC00180100000022080000220000F200020000000000000000000400180100000022080000220000F3000200000000000000000004E8BB',
+)
+
 // ── Synthetic edge cases ──────────────────────────────────────────────────────
 
 // state=0x07, process=0x09: both unmapped, must fall back to the numeric string.
@@ -167,6 +172,7 @@ describe(MODEL_ID, () => {
             'initial_time',
             'rinse_refill',
             'door_open',
+            'control_lock',
             'energy_saver',
             'half_load',
             'extra_dry',
@@ -299,6 +305,16 @@ describe(MODEL_ID, () => {
         assert.equal(props.process_state, 'Washing')
         assert.equal(props.initial_time, 34)
         assert.equal(props.running, 'ON')
+    })
+
+    test('Control Lock is status bit 0x01 (real captures)', () => {
+        const { ha, thinq } = makeDevice()
+        const props = ha.devices[DEVICE_ID].properties
+        thinq.emit('data', SAMPLE_EC_EXPRESS_CONTROL_LOCK)
+        assert.equal(props.control_lock, 'ON')
+        assert.equal(props.door_open, 'ON')
+        thinq.emit('data', SAMPLE_EC_EXPRESS_WASHING)
+        assert.equal(props.control_lock, 'OFF')
     })
 
     test('Turbo with Delay Start: Delayed phase, countdown, running OFF until it starts (real captures)', () => {

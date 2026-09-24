@@ -102,6 +102,14 @@ export default class Device extends AABBDevice {
                         icon: 'mdi:door-open',
                         device_class: 'door',
                     },
+                    control_lock: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-control_lock',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_control_lock',
+                        state_topic: '$this/control_lock',
+                        name: 'Control lock',
+                        icon: 'mdi:lock',
+                    },
                     energy_saver: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-energy_saver',
@@ -216,6 +224,8 @@ export default class Device extends AABBDevice {
     //            a 2026-09-24 Turbo run with the lamp lit. Set only while a course is selected or
     //            running and in the Complete state that precedes the Night Dry phase; clear in
     //            every Off/Done/idle record captured, so it's published without the active gate.
+    //            bit 0 (0x01) = Control Lock — set in the one record inside a ~16 s lock the user
+    //            confirmed (2026-09-24 20:15:58Z, Express selected) and in no other record captured.
     //   [14]     options bitfield: bit 1 (0x02) = energy saver — verified 2026-09-18, and on an
     //            LDT54788D 2026-09-24 (Normal course, the only option set).
     //            bit 6 (0x40) = half load, bit 2 (0x04) = extra dry — verified 2026-09-23: on a
@@ -322,6 +332,7 @@ export default class Device extends AABBDevice {
         this.publishProperty('night_dry', statusBits & 0x80 ? 'ON' : 'OFF')
         this.publishProperty('rinse_refill', statusBits & 0x08 ? 'ON' : 'OFF')
         this.publishProperty('door_open', statusBits & 0x02 ? 'ON' : 'OFF')
+        this.publishProperty('control_lock', statusBits & 0x01 ? 'ON' : 'OFF')
     }
 
     setProperty(prop: string, mqttValue: string) {
