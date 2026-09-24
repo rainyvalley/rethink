@@ -23,7 +23,8 @@ import log from '@/util/logging'
 //                     display at start; it's the start estimate, not the actual run time)
 //          rec[5..6]  same value as rec[3..4] in every capture; not published
 //          rec[7]     cycle — 0x03 on a load with Normal dry level; 0x07 = Bedding and 0x01 = Heavy
-//                     Duty (panel photos, as in the sibling map), 0x05 = Delicates (as in the map); 0x02 = Towels and 0x15 = Steam Fresh (confirmed by the user);
+//                     Duty (panel photos, as in the sibling map), 0x05 = Delicates and 0x04 = Perm.
+//                     Press (as in the map); 0x02 = Towels and 0x15 = Steam Fresh (confirmed by the user);
 //                     unmapped codes are published as their raw hex value
 //          rec[9]     dry level — 0x01/Damp, 0x02/Less (the step between Damp and Normal),
 //                     0x03/Normal, 0x04/More (the step between Normal and Very), 0x05/Very and
