@@ -47,6 +47,9 @@ const E2_SMALL_LOAD_WRINKLE_CARE = buf('AA2330E2031B3200230023090004050000000000
 const E2_SPORTSWEAR_REDUCE_STATIC = buf('AA2330E2031B32001900190B0003030000000000022900002401000005720000006CBB')
 // Twelfth (2026-09-24 18:37Z): Perm. Press (0x04), 0:32, Normal, Medium, no options (panel photo).
 const E2_PERM_PRESS = buf('AA2330E2031B32002000200400030300000000000029000017010000007200000079BB')
+// Thirteenth (2026-09-24 18:43Z): Antibacterial (0x08), 1:10, Very, High — both locked by the cycle
+// (panel photo). Stopped after 5 min with a dry item.
+const E2_ANTIBACTERIAL = buf('AA2330E2031B32010A010A0800050500000000000029000014010000007200000052BB')
 const E2_STEAM_CYCLE = buf('AA2330E2031B32000A000A15000004000000000000A90000420100000272000000E9BB')
 
 // A real 0xEB single-record frame for the sibling RV13U6AM8W_D_US_WIFI model (identical processRecord
@@ -197,6 +200,12 @@ describe(MODEL_ID, () => {
         assert.equal(props.dry_level, 'Normal')
         assert.equal(props.temp, 'Medium')
         assert.equal(props.reduce_static, 'OFF')
+
+        thinq.emit('data', E2_ANTIBACTERIAL)
+        assert.equal(props.cycle, 'Antibacterial')
+        assert.equal(props.cycle_time, 70)
+        assert.equal(props.dry_level, 'Very')
+        assert.equal(props.temp, 'High')
 
         // TurboSteam: set on both Heavy Duty + TurboSteam cycles, clear on regular cycles without
         // it and on the dedicated Steam Fresh cycle

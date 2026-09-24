@@ -93,6 +93,7 @@ const CYCLES = Enum.of({
     Manual: 0x12,
     // confirmed on RV13D5JSD_D_US (not present on the model this map came from)
     Towels: 0x02,
+    Antibacterial: 0x08,
     'Small Load': 0x09,
     Sportswear: 0x0b,
     'Steam Fresh': 0x15,
