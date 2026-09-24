@@ -36,6 +36,9 @@ const E2_HEAVY_DUTY_HIGH = buf('AA2330E2031B3200360036010003050000000000002D0000
 const E2_TOWELS_DAMP = buf('AA2330E2031B32003100310200010400000000000029000012010000007200000013BB')
 // Eighth (2026-09-24 17:34Z): Heavy Duty with TurboSteam again — rec[17] 0x04 set a second time.
 const E2_HEAVY_DUTY_TURBO_STEAM_2 = buf('AA2330E2031B3200360036010003050000000000002D000010010000007200000001BB')
+// Ninth (2026-09-24 17:56Z): Delicates (0x05), 0:15, dry level on the step between Damp and Normal
+// (0x02, "Less"), temp 0x02 (Low, the course default), Reduce Static not active.
+const E2_DELICATES_LESS = buf('AA2330E2031B32000F000F050002020000000000002900000E010000007200000055BB')
 const E2_STEAM_CYCLE = buf('AA2330E2031B32000A000A15000004000000000000A90000420100000272000000E9BB')
 
 // A real 0xEB single-record frame for the sibling RV13U6AM8W_D_US_WIFI model (identical processRecord
@@ -152,6 +155,12 @@ describe(MODEL_ID, () => {
         assert.equal(props.dry_level, 'Damp')
         assert.equal(props.temp, 'Med High')
         assert.equal(props.energy_saver, 'OFF')
+
+        thinq.emit('data', E2_DELICATES_LESS)
+        assert.equal(props.cycle, 'Delicates')
+        assert.equal(props.cycle_time, 15)
+        assert.equal(props.dry_level, 'Less')
+        assert.equal(props.temp, 'Low')
 
         // TurboSteam: set on both Heavy Duty + TurboSteam cycles, clear on regular cycles without
         // it and on the dedicated Steam Fresh cycle
