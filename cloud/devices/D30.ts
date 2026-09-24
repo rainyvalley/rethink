@@ -134,6 +134,24 @@ export default class Device extends AABBDevice {
                         name: 'High temp',
                         icon: 'mdi:thermometer-high',
                     },
+                    delay_start: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-delay_start',
+                        default_entity_id: 'binary_sensor.lg_dishwasher_delay_start',
+                        state_topic: '$this/delay_start',
+                        name: 'Delay start',
+                        icon: 'mdi:clock-plus-outline',
+                    },
+                    delay_start_time: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-delay_start_time',
+                        default_entity_id: 'sensor.lg_dishwasher_delay_start_time',
+                        state_topic: '$this/delay_start_time',
+                        name: 'Delay start time remaining',
+                        icon: 'mdi:clock-outline',
+                        device_class: 'duration',
+                        unit_of_measurement: 'min',
+                    },
                     night_dry: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-night_dry',
@@ -175,21 +193,26 @@ export default class Device extends AABBDevice {
     //                     started, with the door-open bit set, then back to 0x02.
     //   [3]      process  0x02=Washing, 0x03=Rinsing, 0x04=Drying, 0x05=Complete, 0x06=Night
     //                     Dry (post-cycle; state stays 0x02/Running for ~8.5h — treated as not
-    //                     running), 0x00=none
+    //                     running), 0x01=Delayed (waiting out Delay Start; state 0x02 — also treated
+    //                     as not running), 0x00=none
     //   [5]/[6]  initial time   (hour, minute)   e.g. 03 05 = 3:05 (Intensive)
     //   [7]      course  0x05=Normal, 0x01=Auto, 0x02=Heavy (clears to 0x00 at cycle end) —
     //                    verified 2026-09-18/19 across Eco, Auto and Intensive washes (the fork's
     //                    names for 0x05/0x02); the LDT54788D's panel labels them Normal and Heavy
     //                    (panel photos 2026-09-21 and 2026-09-23). 0x03=Delicate — verified
-    //                    2026-09-23 on an LDT54788D (panel photo).
+    //                    2026-09-23 on an LDT54788D (panel photo). 0x04=Turbo, 0:59 (2026-09-24,
+    //                    panel photo).
     //   [9]/[10] remaining time (hour, minute)   e.g. 02 35 = 2:53, 1/min countdown
+    //   [11]/[12] Delay Start time remaining (hour, minute): 01 00 -> 00 3b -> 00 3a, 1/min, on a
+    //            Turbo run with a 1-hour Delay Start (2026-09-24); 00 00 otherwise.
     //   [13]     status bitfield: bit 3 (0x08) = rinse aid refill (most likely; the fork this
     //            was adapted from called it "salt refill" — unlikely on a US model), bit 1
     //            (0x02) = door open (Auto Open Dry; the cloud does NOT report this — our
     //            superset), bit 7 (0x80) = Night Dry enabled — verified 2026-09-23 against three
     //            panel photos on an LDT54788D: set on the 2026-09-21 Heavy and 2026-09-23 Delicate
     //            runs (Night Dry lamp lit, both followed by the process 0x06 phase), clear on a
-    //            2026-09-23 Normal run with the lamp off. Only reported while a course is active.
+    //            2026-09-23 Normal run with the lamp off (no 0x06 phase followed), and set again on
+    //            a 2026-09-24 Turbo run with the lamp lit. Only reported while a course is active.
     //   [14]     options bitfield: bit 1 (0x02) = energy saver — verified 2026-09-18.
     //            bit 6 (0x40) = half load, bit 2 (0x04) = extra dry — verified 2026-09-23: on a
     //            Delicate course, selecting Half Load set 0x40 and cut the estimate 1:54 -> 1:43,
@@ -197,6 +220,8 @@ export default class Device extends AABBDevice {
     //            bit 3 (0x08) = high temp, bit 4 (0x10) = dual zone — verified 2026-09-23: a
     //            Normal course with only the High Temp lamp lit read 0x08, and the Heavy course
     //            from 2026-09-21, with the Dual Zone and High Temp lamps lit, read 0x18.
+    //            bit 0 (0x01) = Delay Start — set when Delay Start was pressed on a Turbo run
+    //            (2026-09-24, lamp lit in the panel photo).
     //            Like the course byte, it clears to 0x00 at cycle end (state 0x04/0x05).
     // Still TODO (need more washes/options): other option bits (steam, ...),
     // error codes.
@@ -225,11 +250,13 @@ export default class Device extends AABBDevice {
         const course = buf[base + 7]
         const remainingH = buf[base + 9]
         const remainingM = buf[base + 10]
+        const delayH = buf[base + 11]
+        const delayM = buf[base + 12]
         const statusBits = buf[base + 13]
         const optionBits = buf[base + 14]
 
         // Sanity: minutes must be 0..59.
-        if (initialM > 59 || remainingM > 59 || initialH > 99 || remainingH > 99) {
+        if (initialM > 59 || remainingM > 59 || delayM > 59 || initialH > 99 || remainingH > 99) {
             log('D30', 'suspect time fields', buf.toString('hex'))
             return
         }
@@ -238,6 +265,7 @@ export default class Device extends AABBDevice {
         // H:MM:SS strings left the entities Unavailable since they weren't valid durations.
         this.publishProperty('initial_time', initialH * 60 + initialM)
         this.publishProperty('remaining_time', remainingH * 60 + remainingM)
+        this.publishProperty('delay_start_time', delayH * 60 + delayM)
 
         const STATES: Record<number, string> = {
             0x00: 'Off',
@@ -253,9 +281,16 @@ export default class Device extends AABBDevice {
             0x04: 'Drying',
             0x05: 'Complete',
             0x06: 'Night Dry',
+            0x01: 'Delayed',
             0x00: '-',
         }
-        const COURSES: Record<number, string> = { 0x05: 'Normal', 0x01: 'Auto', 0x02: 'Heavy', 0x03: 'Delicate' }
+        const COURSES: Record<number, string> = {
+            0x05: 'Normal',
+            0x01: 'Auto',
+            0x02: 'Heavy',
+            0x03: 'Delicate',
+            0x04: 'Turbo',
+        }
         // run_state = granular machine state; process_state = phase.
         this.publishProperty('run_state', STATES[state] ?? String(state))
         this.publishProperty('process_state', PROCESS[process] ?? String(process))
@@ -265,7 +300,7 @@ export default class Device extends AABBDevice {
         const active = state === 0x01 || state === 0x02 || state === 0x03
         // The state byte stays 0x02 (Running) for ~8.5h of post-cycle Night Dry (process
         // 0x06); treat that phase as not running so `running` reflects the actual cycle.
-        this.publishProperty('running', active && process !== 0x06 ? 'ON' : 'OFF')
+        this.publishProperty('running', active && process !== 0x06 && process !== 0x01 ? 'ON' : 'OFF')
 
         // Course clears to 0x00 once the cycle ends (state 0x04/0x05); only publish
         // a course while the cycle is active, otherwise '-'.
@@ -278,6 +313,7 @@ export default class Device extends AABBDevice {
         this.publishProperty('extra_dry', active && optionBits & 0x04 ? 'ON' : 'OFF')
         this.publishProperty('high_temp', active && optionBits & 0x08 ? 'ON' : 'OFF')
         this.publishProperty('dual_zone', active && optionBits & 0x10 ? 'ON' : 'OFF')
+        this.publishProperty('delay_start', active && optionBits & 0x01 ? 'ON' : 'OFF')
         this.publishProperty('night_dry', active && statusBits & 0x80 ? 'ON' : 'OFF')
         this.publishProperty('rinse_refill', statusBits & 0x08 ? 'ON' : 'OFF')
         this.publishProperty('door_open', statusBits & 0x02 ? 'ON' : 'OFF')

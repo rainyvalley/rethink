@@ -103,6 +103,20 @@ const SAMPLE_EC_MALFORMED_LONG = buf(
     'AAC632EC00180505000203030000010000F0000200000000000000000004AEBB000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003180505000203030000010000F000020000000000000000000445030001040000000043002902C500000000001000050436C0102002FF0000000000142E2223384631000001D1000003018600000000000000000000004D14242C180207C10276BB',
 )
 
+// Third capture (2026-09-24): Turbo with a 1-hour Delay Start, Night Dry lamp lit (panel photo).
+// Selecting, Delay Start pressed: option bit 0x01.
+const SAMPLE_EC_TURBO_DELAY_SELECTED = buf(
+    'AA3A32EC0018010000003B0400003B0000F20002000000000000000000040018010000003B0400003B0000F20102000000000000000000044CBB',
+)
+// Started: state Running, process 0x01 (Delayed), delay 0:59 left of the cycle's 0:59 estimate.
+const SAMPLE_EC_TURBO_DELAYED = buf(
+    'AA3A32EC0018020100003B0400003B0100F00102000000000000000000040118020100003B0400003B003BF001020000000000000000000402BB',
+)
+// A minute later: delay 0:58.
+const SAMPLE_EC_TURBO_DELAYED_LATER = buf(
+    'AA3A32EC0018020100003B0400003B003BF00102000000000000000000040018020100003B0400003B003AF0010200000000000000000004DABB',
+)
+
 // ── Synthetic edge cases ──────────────────────────────────────────────────────
 
 // state=0x07, process=0x09: both unmapped, must fall back to the numeric string.
@@ -153,6 +167,8 @@ describe(MODEL_ID, () => {
             'high_temp',
             'dual_zone',
             'night_dry',
+            'delay_start',
+            'delay_start_time',
         ]) {
             assert.ok(components[c], `component ${c} present`)
         }
@@ -169,7 +185,6 @@ describe(MODEL_ID, () => {
             'child_lock',
             'steam',
             'tub_clean_counter',
-            'delay_start',
             'remote_start',
         ]) {
             assert.ok(!components[c], `component ${c} removed`)
@@ -263,6 +278,30 @@ describe(MODEL_ID, () => {
         } finally {
             cap.restore()
         }
+    })
+
+    test('Turbo with Delay Start: Delayed phase, countdown, running OFF until it starts (real captures)', () => {
+        const { ha, thinq } = makeDevice()
+        const props = ha.devices[DEVICE_ID].properties
+
+        thinq.emit('data', SAMPLE_EC_TURBO_DELAY_SELECTED)
+        assert.equal(props.run_state, 'Starting')
+        assert.equal(props.current_course, 'Turbo')
+        assert.equal(props.initial_time, 59)
+        assert.equal(props.delay_start, 'ON')
+        assert.equal(props.night_dry, 'ON') // Night Dry lamp lit in the panel photo
+        assert.equal(props.delay_start_time, 0)
+
+        thinq.emit('data', SAMPLE_EC_TURBO_DELAYED)
+        assert.equal(props.run_state, 'Running')
+        assert.equal(props.process_state, 'Delayed')
+        assert.equal(props.running, 'OFF') // waiting, not washing
+        assert.equal(props.delay_start_time, 59)
+        assert.equal(props.remaining_time, 59)
+
+        thinq.emit('data', SAMPLE_EC_TURBO_DELAYED_LATER)
+        assert.equal(props.delay_start_time, 58)
+        assert.equal(props.delay_start, 'ON')
     })
 
     test('0xEC Off publishes Off/none, running OFF, no course (real capture)', () => {
