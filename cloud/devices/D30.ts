@@ -211,6 +211,8 @@ export default class Device extends AABBDevice {
     //                    2026-09-23 on an LDT54788D (panel photo). 0x04=Turbo, 0:59 (2026-09-24,
     //                    panel photo).
     //                    0x08=Express, 0:34 (2026-09-24, a hidden course on the LDT54788D panel).
+    //                    0x09=Machine Clean, 1:22 (2026-09-24, selected with the long press; Night
+    //                    Dry bit clear).
     //   [9]/[10] remaining time (hour, minute)   e.g. 02 35 = 2:53, 1/min countdown
     //   [11]/[12] Delay Start time remaining (hour, minute): 01 00 -> 00 3b -> 00 3a, 1/min, on a
     //            Turbo run with a 1-hour Delay Start (2026-09-24); 00 00 otherwise.
@@ -305,6 +307,7 @@ export default class Device extends AABBDevice {
             0x03: 'Delicate',
             0x04: 'Turbo',
             0x08: 'Express',
+            0x09: 'Machine Clean',
         }
         // run_state = granular machine state; process_state = phase.
         this.publishProperty('run_state', STATES[state] ?? String(state))

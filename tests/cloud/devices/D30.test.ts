@@ -128,6 +128,11 @@ const SAMPLE_EC_EXPRESS_CONTROL_LOCK = buf(
     'AA3A32EC00180100000022080000220000F200020000000000000000000400180100000022080000220000F3000200000000000000000004E8BB',
 )
 
+// Fifth capture (2026-09-24 20:52Z): Machine Clean, 1:22, just started washing (Night Dry bit clear).
+const SAMPLE_EC_MACHINE_CLEAN_WASHING = buf(
+    'AA3A32EC00180100000116090001160000720002000000000000000000040018020200011609000116000070000200000000000000000004C6BB',
+)
+
 // ── Synthetic edge cases ──────────────────────────────────────────────────────
 
 // state=0x07, process=0x09: both unmapped, must fall back to the numeric string.
@@ -305,6 +310,16 @@ describe(MODEL_ID, () => {
         assert.equal(props.process_state, 'Washing')
         assert.equal(props.initial_time, 34)
         assert.equal(props.running, 'ON')
+    })
+
+    test('Machine Clean is course 0x09 (real capture)', () => {
+        const { ha, thinq } = makeDevice()
+        thinq.emit('data', SAMPLE_EC_MACHINE_CLEAN_WASHING)
+        const props = ha.devices[DEVICE_ID].properties
+        assert.equal(props.current_course, 'Machine Clean')
+        assert.equal(props.process_state, 'Washing')
+        assert.equal(props.initial_time, 82)
+        assert.equal(props.night_dry, 'OFF')
     })
 
     test('Control Lock is status bit 0x01 (real captures)', () => {
