@@ -87,6 +87,14 @@ const DUMP_RESERVE_OFFSET = 13
 // when the Tub Clean started rinsing), so like soil/temp a cleared bit only counts before the cycle is
 // under way. Delay is a live state instead: it cleared when the Allergiene load's delay ran out.
 const DUMP_FLAGS_OFFSET = 24
+// Extra Rinse count: 01 on a Bright Whites load with one extra rinse, 02 on a Sportswear load with
+// two, 00 on every other load. Same meaning as the high nibble of rec[11] in the 0xEC/0xEB record.
+const DUMP_EXTRA_RINSE_COUNT_OFFSET = 19
+// Second options byte: bit 0x01 = Fresh Care, set on the two loads photographed with the Fresh Care
+// lamp lit (Downloaded and Sportswear) and clear on every earlier load with it off. Bit 0x80 is set
+// once a cycle is running (likely the door lock, as rec[16] of the 0xEC/0xEB record) — not published.
+const DUMP_OPT2_OFFSET = 25
+const DUMP_OPT2_FRESH_CARE = 0x01
 // ezDispense Detergent Level setting (the amount auto-dispensed, set with the Detergent Level button;
 // the panel shows it as 1-3 bars next to ▲/Norm/▼). Bits 0xc0 checked against six panel photos: 0xc0
 // with three bars lit (Normal, Heavy Duty), 0x80 with two (Sanitary, Allergiene), 0x40 with one (Bright
@@ -208,6 +216,7 @@ const DUMP_COURSE = Enum.of({
     'Tub Clean': 0x0d,
     Towels: 0x0e,
     'Rinse+Spin': 0x10,
+    Sportswear: 0x13,
 })
 
 // Soil level 1-5, clean sequential mapping confirmed by single-step toggling against the cloud's
@@ -351,6 +360,21 @@ export default class Device extends AABBDevice {
                         name: 'Pre-wash',
                         icon: 'mdi:water-sync',
                     },
+                    extra_rinse_count: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-extra_rinse_count',
+                        state_topic: '$this/extra_rinse_count',
+                        name: 'Extra rinse count',
+                        icon: 'mdi:water-sync',
+                        state_class: 'measurement',
+                    },
+                    fresh_care: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-fresh_care',
+                        state_topic: '$this/fresh_care',
+                        name: 'Fresh Care',
+                        icon: 'mdi:tshirt-crew-outline',
+                    },
                     delay_wash: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-delay_wash',
@@ -460,6 +484,11 @@ export default class Device extends AABBDevice {
             option('steam', FLAG_STEAM)
             option('extra_rinse', FLAG_EXTRA_RINSE)
             option('pre_wash', FLAG_PRE_WASH)
+            const opt2 = at(DUMP_OPT2_OFFSET)
+            if ((opt2 & DUMP_OPT2_FRESH_CARE) !== 0) this.publishProperty('fresh_care', 'ON')
+            else if (presetting) this.publishProperty('fresh_care', 'OFF')
+            const extraRinses = at(DUMP_EXTRA_RINSE_COUNT_OFFSET)
+            if (extraRinses !== 0 || presetting) this.publishProperty('extra_rinse_count', extraRinses)
             this.publishProperty('delay_wash', (flags & FLAG_DELAY_ACTIVE) !== 0 ? 'ON' : 'OFF')
             this.publishProperty('reserve_time', hm(DUMP_RESERVE_OFFSET))
 
