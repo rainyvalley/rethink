@@ -213,6 +213,8 @@ export default class Device extends AABBDevice {
     //                    0x08=Express, 0:34 (2026-09-24, a hidden course on the LDT54788D panel).
     //                    0x09=Machine Clean, 1:22 (2026-09-24, selected with the long press; Night
     //                    Dry bit clear).
+    //                    0x06=Rinse, 0:12 (2026-09-24, hidden course; goes to process 0x03 Rinsing
+    //                    within a minute).
     //   [9]/[10] remaining time (hour, minute)   e.g. 02 35 = 2:53, 1/min countdown
     //   [11]/[12] Delay Start time remaining (hour, minute): 01 00 -> 00 3b -> 00 3a, 1/min, on a
     //            Turbo run with a 1-hour Delay Start (2026-09-24); 00 00 otherwise.
@@ -227,7 +229,8 @@ export default class Device extends AABBDevice {
     //            running and in the Complete state that precedes the Night Dry phase; clear in
     //            every Off/Done/idle record captured, so it's published without the active gate.
     //            bit 0 (0x01) = Control Lock — set in the one record inside a ~16 s lock the user
-    //            confirmed (2026-09-24 20:15:58Z, Express selected) and in no other record captured.
+    //            confirmed (2026-09-24 20:15:58Z, Express selected), again in a second confirmed lock (21:19:54Z,
+    //            Rinse selected), and in no other record captured.
     //   [14]     options bitfield: bit 1 (0x02) = energy saver — verified 2026-09-18, and on an
     //            LDT54788D 2026-09-24 (Normal course, the only option set).
     //            bit 6 (0x40) = half load, bit 2 (0x04) = extra dry — verified 2026-09-23: on a
@@ -302,6 +305,7 @@ export default class Device extends AABBDevice {
         }
         const COURSES: Record<number, string> = {
             0x05: 'Normal',
+            0x06: 'Rinse',
             0x01: 'Auto',
             0x02: 'Heavy',
             0x03: 'Delicate',

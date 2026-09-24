@@ -133,6 +133,15 @@ const SAMPLE_EC_MACHINE_CLEAN_WASHING = buf(
     'AA3A32EC00180100000116090001160000720002000000000000000000040018020200011609000116000070000200000000000000000004C6BB',
 )
 
+// Sixth capture (2026-09-24 21:19Z): Rinse (hidden course), 0:12 — selected with Control Lock on
+// (user-confirmed, status bit 0x01), then Rinsing a minute after the start.
+const SAMPLE_EC_RINSE_CONTROL_LOCK = buf(
+    'AA3A32EC0018010000000C0600000C0000720002000000000000000000040018010000000C0600000C00007300020000000000000000000434BB',
+)
+const SAMPLE_EC_RINSE_RINSING = buf(
+    'AA3A32EC0018020200000C0600000C0000700002000000000000000000040018020300000C0600000C00007000020000000000000000000436BB',
+)
+
 // ── Synthetic edge cases ──────────────────────────────────────────────────────
 
 // state=0x07, process=0x09: both unmapped, must fall back to the numeric string.
@@ -319,6 +328,19 @@ describe(MODEL_ID, () => {
         assert.equal(props.current_course, 'Machine Clean')
         assert.equal(props.process_state, 'Washing')
         assert.equal(props.initial_time, 82)
+        assert.equal(props.night_dry, 'OFF')
+    })
+
+    test('Rinse is course 0x06 (real captures)', () => {
+        const { ha, thinq } = makeDevice()
+        const props = ha.devices[DEVICE_ID].properties
+        thinq.emit('data', SAMPLE_EC_RINSE_CONTROL_LOCK)
+        assert.equal(props.current_course, 'Rinse')
+        assert.equal(props.initial_time, 12)
+        assert.equal(props.control_lock, 'ON')
+        thinq.emit('data', SAMPLE_EC_RINSE_RINSING)
+        assert.equal(props.process_state, 'Rinsing')
+        assert.equal(props.control_lock, 'OFF')
         assert.equal(props.night_dry, 'OFF')
     })
 
