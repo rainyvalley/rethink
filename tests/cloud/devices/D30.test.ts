@@ -118,6 +118,11 @@ const SAMPLE_EC_TURBO_DELAYED_LATER = buf(
     'AA3A32EC0018020100003B0400003B003BF00102000000000000000000040018020100003B0400003B003AF0010200000000000000000004DABB',
 )
 
+// Fourth capture (2026-09-24 20:16Z): Express, a hidden course, 0:34 — Washing.
+const SAMPLE_EC_EXPRESS_WASHING = buf(
+    'AA3A32EC00180100000022080000220000F200020000000000000000000400180202000022080000220000F0000200000000000000000004E8BB',
+)
+
 // ── Synthetic edge cases ──────────────────────────────────────────────────────
 
 // state=0x07, process=0x09: both unmapped, must fall back to the numeric string.
@@ -284,6 +289,16 @@ describe(MODEL_ID, () => {
         } finally {
             cap.restore()
         }
+    })
+
+    test('Express (hidden course) is course 0x08 (real capture)', () => {
+        const { ha, thinq } = makeDevice()
+        thinq.emit('data', SAMPLE_EC_EXPRESS_WASHING)
+        const props = ha.devices[DEVICE_ID].properties
+        assert.equal(props.current_course, 'Express')
+        assert.equal(props.process_state, 'Washing')
+        assert.equal(props.initial_time, 34)
+        assert.equal(props.running, 'ON')
     })
 
     test('Turbo with Delay Start: Delayed phase, countdown, running OFF until it starts (real captures)', () => {
