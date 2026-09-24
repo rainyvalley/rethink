@@ -29,6 +29,9 @@ import log from '@/util/logging'
 //                     lamp lit)
 //          rec[10]    temp — 0x04/Med High (the unlabeled lamp between High and Medium) and
 //                     0x03/Medium, each matching the panel photo
+//          rec[17]    bit 0x02 = Energy Saver — set (0xab) only on the one cycle with the Energy Saver
+//                     lamp lit; 0xa9/0x29 on three cycles photographed with it off, and on Towels.
+//                     The other bits aren't identified (0x80 was clear on one cycle only).
 //        These are published as the "last cycle" settings, since this dryer only reports them once
 //        the cycle is over.
 // Live remaining time needs the appliance to be sending 0xEC/0xEB/similar status records with a
@@ -53,6 +56,8 @@ const SUMMARY_TIME_MIN = 4
 const SUMMARY_CYCLE = 7
 const SUMMARY_DRY_LEVEL = 9
 const SUMMARY_TEMP = 10
+const SUMMARY_FLAGS = 17
+const SUMMARY_FLAG_ENERGY_SAVER = 0x02
 
 const STATUS = Enum.of({
     Off: 0x00,
@@ -154,6 +159,13 @@ export default class Device extends AABBDevice {
                         device_class: 'enum',
                         options: DRY_LEVELS.options,
                     },
+                    energy_saver: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-energy_saver',
+                        state_topic: '$this/energy_saver',
+                        name: 'Last cycle energy saver',
+                        icon: 'mdi:leaf',
+                    },
                     // remaining_time and drum_running are only decoded from 0xEC/0xEB frames, which
                     // this model hasn't been seen sending; they're left out of discovery so they don't
                     // sit at Unknown in HA.
@@ -215,5 +227,6 @@ export default class Device extends AABBDevice {
         this.publishProperty('cycle_time', rec[SUMMARY_TIME_HOUR] * 60 + rec[SUMMARY_TIME_MIN])
         this.publishProperty('temp', TEMPS.map(rec[SUMMARY_TEMP]))
         this.publishProperty('dry_level', DRY_LEVELS.map(rec[SUMMARY_DRY_LEVEL]))
+        this.publishProperty('energy_saver', (rec[SUMMARY_FLAGS] & SUMMARY_FLAG_ENERGY_SAVER) !== 0 ? 'ON' : 'OFF')
     }
 }

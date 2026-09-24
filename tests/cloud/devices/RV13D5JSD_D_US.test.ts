@@ -26,6 +26,9 @@ const E2_TOWELS = buf('AA2330E2031B320037003702000304000000000000A90000B70100000
 // Fourth: Bedding (0x07), 1:05 estimate, Very dry level, Medium temp (panel photo); it stopped after
 // under 4 minutes with only a dry towel inside, but the summary still carries the start estimate.
 const E2_BEDDING = buf('AA2330E2031B320105010507000503000000000000A900000F010000007200000020BB')
+// Fifth: Normal with Energy Saver OFF (panel photo), otherwise the same settings as E2_END_OF_CYCLE,
+// which had Energy Saver on: 0:41, Normal dry level, Med High.
+const E2_NORMAL_ENERGY_SAVER_OFF = buf('AA2330E2031B3200290029030003040000000000002904009D01000000720000009DBB')
 const E2_STEAM_CYCLE = buf('AA2330E2031B32000A000A15000004000000000000A90000420100000272000000E9BB')
 
 // A real 0xEB single-record frame for the sibling RV13U6AM8W_D_US_WIFI model (identical processRecord
@@ -54,7 +57,7 @@ describe(MODEL_ID, () => {
         const cfg = ha.devices[DEVICE_ID].config
         assert.ok(cfg, 'config published on construction')
         const components = cfg!.components as Record<string, Record<string, unknown>>
-        for (const c of ['power', 'status', 'cycle', 'cycle_time', 'temp', 'dry_level']) {
+        for (const c of ['power', 'status', 'cycle', 'cycle_time', 'temp', 'dry_level', 'energy_saver']) {
             assert.ok(components[c], `component ${c} present`)
         }
         // 0xEC/0xEB-only fields this model never sends must not be advertised (they'd sit at Unknown)
@@ -92,6 +95,7 @@ describe(MODEL_ID, () => {
         assert.equal(props.cycle_time, 63)
         assert.equal(props.temp, 'Med High')
         assert.equal(props.dry_level, 'Normal')
+        assert.equal(props.energy_saver, 'ON') // Energy Saver lamp lit in the panel photo
 
         thinq.emit('data', E2_STEAM_CYCLE)
         assert.equal(props.cycle, 'Steam Fresh')
@@ -106,10 +110,18 @@ describe(MODEL_ID, () => {
         assert.equal(props.dry_level, 'Normal')
 
         thinq.emit('data', E2_BEDDING)
+        assert.equal(props.energy_saver, 'OFF')
         assert.equal(props.cycle, 'Bedding')
         assert.equal(props.cycle_time, 65)
         assert.equal(props.temp, 'Medium')
         assert.equal(props.dry_level, 'Very')
+
+        thinq.emit('data', E2_NORMAL_ENERGY_SAVER_OFF)
+        assert.equal(props.cycle, 'Normal')
+        assert.equal(props.cycle_time, 41)
+        assert.equal(props.temp, 'Med High')
+        assert.equal(props.dry_level, 'Normal')
+        assert.equal(props.energy_saver, 'OFF')
 
         // phase/power come from the 0x72 heartbeat, not the summary
         assert.equal(props.status, undefined)

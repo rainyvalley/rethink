@@ -81,8 +81,9 @@ const DUMP_RESERVE_OFFSET = 13
 // lit and clear on Sanitary, Rinse+Spin, Tub Clean and Allergiene with it off; Steam (0x04) set only on
 // Tub Clean and Allergiene, the two with the Steam lamp lit; Delay (0x02) set only on the delayed
 // Allergiene load. Extra Rinse (0x40) and Pre-wash (0x08) haven't been seen set yet, so they aren't
-// published from this frame. Bits can clear once their stage is over (Steam cleared when the Tub
-// Clean started rinsing), so like soil/temp a cleared bit only counts before the cycle is under way.
+// published from this frame. TurboWash and Steam can clear once their stage is over (Steam cleared
+// when the Tub Clean started rinsing), so like soil/temp a cleared bit only counts before the cycle is
+// under way. Delay is a live state instead: it cleared when the Allergiene load's delay ran out.
 const DUMP_FLAGS_OFFSET = 24
 // ezDispense Detergent Level setting (the amount auto-dispensed, set with the Detergent Level button;
 // the panel shows it as 1-3 bars next to ▲/Norm/▼). Bits 0xc0 checked against five panel photos: 0xc0
@@ -437,7 +438,7 @@ export default class Device extends AABBDevice {
             }
             option('turbo_wash', FLAG_TURBO_WASH)
             option('steam', FLAG_STEAM)
-            option('delay_wash', FLAG_DELAY_ACTIVE)
+            this.publishProperty('delay_wash', (flags & FLAG_DELAY_ACTIVE) !== 0 ? 'ON' : 'OFF')
             this.publishProperty('reserve_time', hm(DUMP_RESERVE_OFFSET))
 
             if (buf.length > DUMP_DETERGENT_OFFSET + shift) {
