@@ -29,6 +29,9 @@ const E2_BEDDING = buf('AA2330E2031B320105010507000503000000000000A900000F010000
 // Fifth: Normal with Energy Saver OFF (panel photo), otherwise the same settings as E2_END_OF_CYCLE,
 // which had Energy Saver on: 0:41, Normal dry level, Med High.
 const E2_NORMAL_ENERGY_SAVER_OFF = buf('AA2330E2031B3200290029030003040000000000002904009D01000000720000009DBB')
+// Sixth: Heavy Duty (0x01), 0:54, Normal dry level, High temp, TurboSteam lamp lit, Energy Saver off
+// (panel photo). rec[17] = 0x2d: 0x04 is set only here — possibly TurboSteam, not yet confirmed.
+const E2_HEAVY_DUTY_HIGH = buf('AA2330E2031B3200360036010003050000000000002D0000EC010000007200000065BB')
 const E2_STEAM_CYCLE = buf('AA2330E2031B32000A000A15000004000000000000A90000420100000272000000E9BB')
 
 // A real 0xEB single-record frame for the sibling RV13U6AM8W_D_US_WIFI model (identical processRecord
@@ -120,6 +123,13 @@ describe(MODEL_ID, () => {
         assert.equal(props.cycle, 'Normal')
         assert.equal(props.cycle_time, 41)
         assert.equal(props.temp, 'Med High')
+        assert.equal(props.dry_level, 'Normal')
+        assert.equal(props.energy_saver, 'OFF')
+
+        thinq.emit('data', E2_HEAVY_DUTY_HIGH)
+        assert.equal(props.cycle, 'Heavy Duty')
+        assert.equal(props.cycle_time, 54)
+        assert.equal(props.temp, 'High')
         assert.equal(props.dry_level, 'Normal')
         assert.equal(props.energy_saver, 'OFF')
 

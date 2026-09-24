@@ -22,16 +22,18 @@ import log from '@/util/logging'
 //          rec[3..4]  cycle time, h:m — 1:03, 0:10, 0:55 and 1:05 (the photographed ones matched the
 //                     display at start; it's the start estimate, not the actual run time)
 //          rec[5..6]  same value as rec[3..4] in every capture; not published
-//          rec[7]     cycle — 0x03 on a load with Normal dry level; 0x07 = Bedding (panel photo, as in
-//                     the sibling map); 0x02 = Towels and 0x15 = Steam Fresh (confirmed by the user);
+//          rec[7]     cycle — 0x03 on a load with Normal dry level; 0x07 = Bedding and 0x01 = Heavy
+//                     Duty (panel photos, as in the sibling map); 0x02 = Towels and 0x15 = Steam Fresh (confirmed by the user);
 //                     unmapped codes are published as their raw hex value
 //          rec[9]     dry level — 0x03/Normal, 0x05/Very and 0x00/none (steam cycle, no dry-level
 //                     lamp lit)
-//          rec[10]    temp — 0x04/Med High (the unlabeled lamp between High and Medium) and
+//          rec[10]    temp — 0x05/High, 0x04/Med High (the unlabeled lamp between High and Medium) and
 //                     0x03/Medium, each matching the panel photo
 //          rec[17]    bit 0x02 = Energy Saver — set (0xab) only on the one cycle with the Energy Saver
 //                     lamp lit; 0xa9/0x29 on three cycles photographed with it off, and on Towels.
-//                     The other bits aren't identified (0x80 was clear on one cycle only).
+//                     0x04 was set only on a Heavy Duty cycle with the TurboSteam lamp lit, but not
+//                     on Steam Fresh (also lit), so it isn't published yet. 0x80 was clear on the
+//                     last two cycles only. The other bits aren't identified.
 //        These are published as the "last cycle" settings, since this dryer only reports them once
 //        the cycle is over.
 // Live remaining time needs the appliance to be sending 0xEC/0xEB/similar status records with a
