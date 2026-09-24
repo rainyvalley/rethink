@@ -192,6 +192,12 @@ const SPORTSWEAR_BD_SELECTING = buf(
     'AA0020BD0001019001020B05011D011D00001300030402040300074001006A000500000000000006000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000017E0267E9E7010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000420000000030000000000000000000000000000000000000000000000000000026BB',
 )
 
+// ── 2026-09-24 20:19Z: Towels (course 0x0e), Cold, Extra High, Normal soil, Cold Wash lamp lit ─────────
+
+const TOWELS_COLD_WASH_BD_SELECTING = buf(
+    'AA0020BD0001019001020B050106010600000E00030200030500000010006A0008000000000000000123230000001A1A000000F9F90000000000000000000000000000000000000000000000000000000000000000008383000000B89A00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000017702580000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000820000000030000000000000000000000000000000000000000000000000000075BB',
+)
+
 // ── 2026-09-24 17:29Z: Speed Wash (course 0x0c), 0:07, No Spin, Cold, Light soil ──────────────────────
 
 const SPEED_WASH_BD_SELECTING = buf(
@@ -248,12 +254,13 @@ describe(MODEL_ID, () => {
             'pre_wash',
             'extra_rinse_count',
             'fresh_care',
+            'cold_wash',
             'control_lock',
         ]) {
             assert.ok(components[c], `component ${c} present`)
         }
         // 0xEC/0xEB-only fields this model never sends must not be advertised (they'd sit at Unknown)
-        for (const c of ['door', 'door_lock', 'cold_wash']) {
+        for (const c of ['door', 'door_lock']) {
             assert.equal(components[c], undefined, `component ${c} absent`)
         }
         assert.equal(components.initial_time.device_class, 'duration')
@@ -580,6 +587,25 @@ describe(MODEL_ID, () => {
             assert.equal(ha.devices[DEVICE_ID].properties.fresh_care, freshCare)
             assert.equal(ha.devices[DEVICE_ID].properties.extra_rinse_count, extraRinses)
         }
+    })
+
+    test('Towels with Cold Wash (real capture)', () => {
+        const { ha, thinq } = makeDevice()
+        const p = ha.devices[DEVICE_ID].properties
+        thinq.emit('data', TOWELS_COLD_WASH_BD_SELECTING)
+        assert.equal(p.course, 'Towels')
+        assert.equal(p.temp, 'Cold')
+        assert.equal(p.spin, 'Extra High')
+        assert.equal(p.soil, 'Normal')
+        assert.equal(p.cold_wash, 'ON')
+        assert.equal(p.fresh_care, 'OFF')
+    })
+
+    test('Cold Wash reads OFF on Cold-temp loads without it (real captures)', () => {
+        const { ha, thinq } = makeDevice()
+        thinq.emit('data', SPEED_WASH_BD_SELECTING) // Cold temp, Cold Wash lamp off in the panel photo
+        assert.equal(ha.devices[DEVICE_ID].properties.temp, 'Cold')
+        assert.equal(ha.devices[DEVICE_ID].properties.cold_wash, 'OFF')
     })
 
     test('Speed Wash: No Spin, Cold, Light soil (real capture)', () => {

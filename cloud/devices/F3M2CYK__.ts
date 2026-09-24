@@ -93,9 +93,11 @@ const DUMP_FLAGS_OFFSET = 24
 // Extra Rinse count: 01 on a Bright Whites load with one extra rinse, 02 on a Sportswear load with
 // two, 00 on every other load. Same meaning as the high nibble of rec[11] in the 0xEC/0xEB record.
 const DUMP_EXTRA_RINSE_COUNT_OFFSET = 19
-// Second options byte: bit 0x01 = Fresh Care, set on the two loads photographed with the Fresh Care
-// lamp lit (Downloaded and Sportswear) and clear on every earlier load with it off. Bit 0x80 is set
-// once a cycle is running (likely the door lock, as rec[16] of the 0xEC/0xEB record) — not published.
+// Second options byte, the same bitfield as rec[16] of the 0xEC/0xEB record: bit 0x01 = Fresh Care,
+// set on the two loads photographed with the Fresh Care lamp lit (Downloaded and Sportswear) and clear
+// on every earlier load with it off. Bit 0x10 = Cold Wash (OPT2_COLD_WASH), set only on a Towels load
+// photographed with the Cold Wash lamp lit, and clear on the three earlier Cold-temp loads without it.
+// Bit 0x80 is set once a cycle is running (likely the door lock, as in rec[16]) — not published.
 const DUMP_FLAG_CONTROL_LOCK = 0x01
 const DUMP_OPT2_OFFSET = 25
 const DUMP_OPT2_FRESH_CARE = 0x01
@@ -381,6 +383,13 @@ export default class Device extends AABBDevice {
                         name: 'Fresh Care',
                         icon: 'mdi:tshirt-crew-outline',
                     },
+                    cold_wash: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-cold_wash',
+                        state_topic: '$this/cold_wash',
+                        name: 'Cold wash',
+                        icon: 'mdi:snowflake',
+                    },
                     control_lock: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-control_lock',
@@ -500,6 +509,8 @@ export default class Device extends AABBDevice {
             const opt2 = at(DUMP_OPT2_OFFSET)
             if ((opt2 & DUMP_OPT2_FRESH_CARE) !== 0) this.publishProperty('fresh_care', 'ON')
             else if (presetting) this.publishProperty('fresh_care', 'OFF')
+            if ((opt2 & OPT2_COLD_WASH) !== 0) this.publishProperty('cold_wash', 'ON')
+            else if (presetting) this.publishProperty('cold_wash', 'OFF')
             const extraRinses = at(DUMP_EXTRA_RINSE_COUNT_OFFSET)
             if (extraRinses !== 0 || presetting) this.publishProperty('extra_rinse_count', extraRinses)
             this.publishProperty('delay_wash', (flags & FLAG_DELAY_ACTIVE) !== 0 ? 'ON' : 'OFF')
