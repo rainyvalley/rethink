@@ -72,6 +72,25 @@ const DUMP_TUB_CLEAN_COUNT_OFFSET = 29
 // soil reads 01/02/03, Sanitary/Extra Hot/High/Normal soil reads 03/07/04. Other loads fit the same scales (Normal and Towels read Warm with Normal soil,
 // Rinse+Spin reads Cold with no soil, Tub Clean reads neither). 0x00 means "not applicable": soil
 // clears when Rinsing starts and temp when Spinning starts, while spin holds for the whole cycle.
+// Delay Wash time remaining, [hour][minute], counting down while phase == Delay Wash (0x0a); 00 00
+// otherwise. Same field as rec[13:15] of the 0xEC/0xEB record. Seen on an Allergiene load with a
+// 1-hour delay: 01 00 at start, 00 39 four minutes later.
+const DUMP_RESERVE_OFFSET = 13
+// Options bitfield, same bits as rec[15] of the 0xEC/0xEB record (FLAG_* below). Checked against
+// seven panel photos: TurboWash (0x80) set on the Normal and Heavy Duty loads with the TurboWash lamp
+// lit and clear on Sanitary, Rinse+Spin, Tub Clean and Allergiene with it off; Steam (0x04) set only on
+// Tub Clean and Allergiene, the two with the Steam lamp lit; Delay (0x02) set only on the delayed
+// Allergiene load. Extra Rinse (0x40) and Pre-wash (0x08) haven't been seen set yet, so they aren't
+// published from this frame. Bits can clear once their stage is over (Steam cleared when the Tub
+// Clean started rinsing), so like soil/temp a cleared bit only counts before the cycle is under way.
+const DUMP_FLAGS_OFFSET = 24
+// ezDispense Detergent Level setting (the amount auto-dispensed, set with the Detergent Level button;
+// the panel shows it as 1-3 bars next to ▲/Norm/▼). Bits 0xc0 checked against five panel photos: 0xc0
+// with three bars lit (Normal, Heavy Duty), 0x80 with two (Sanitary, Allergiene), 0x00 with none
+// (Rinse+Spin, which doesn't dispense). The Heavy Duty load was changed from 0x80 to 0xc0 while it was
+// being selected, so it's the setting rather than the tank level. One bar (Less) hasn't been seen.
+const DUMP_DETERGENT_OFFSET = 373
+const DUMP_DETERGENT_MASK = 0xc0
 const DUMP_SOIL_OFFSET = 17
 const DUMP_TEMP_OFFSET = 18
 const DUMP_SPIN_OFFSET = 21
@@ -147,6 +166,12 @@ const STATUS = Enum.of({
     Complete: 0x3c,
 })
 
+const DETERGENT_LEVEL = Enum.of({
+    Off: 0x00,
+    Normal: 0x80,
+    More: 0xc0,
+})
+
 // Course/dial-position identifier -> name. Live-confirmed by turning the dial through every position and
 // reading the LG cloud's own apCourseFLUpper25inchBaseUS at each stop.
 const COURSE = Enum.of({
@@ -170,6 +195,7 @@ const COURSE = Enum.of({
 // published as its raw hex code so it can be identified from HA.
 const DUMP_COURSE = Enum.of({
     Sanitary: 0x02,
+    Allergiene: 0x03,
     Normal: 0x06,
     'Heavy Duty': 0x07,
     'Tub Clean': 0x0d,
@@ -290,10 +316,47 @@ export default class Device extends AABBDevice {
                         name: 'Temperature',
                         icon: 'mdi:thermometer',
                     },
-                    // The option flags, door, door lock and Delay Wash time are only decoded from
-                    // 0xEC/0xEB frames, which this model hasn't been seen sending. They're
-                    // left out of discovery so they don't sit at Unknown in HA; processStatus still
-                    // publishes their state topics if a unit does send those frames.
+                    turbo_wash: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-turbo_wash',
+                        state_topic: '$this/turbo_wash',
+                        name: 'TurboWash',
+                        icon: 'mdi:rocket-launch',
+                    },
+                    steam: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-steam',
+                        state_topic: '$this/steam',
+                        name: 'Steam',
+                        icon: 'mdi:kettle-steam',
+                    },
+                    delay_wash: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-delay_wash',
+                        state_topic: '$this/delay_wash',
+                        name: 'Delay Wash',
+                        icon: 'mdi:clock-plus-outline',
+                    },
+                    reserve_time: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-reserve_time',
+                        state_topic: '$this/reserve_time',
+                        name: 'Delay Wash time remaining',
+                        icon: 'mdi:clock-outline',
+                        device_class: 'duration',
+                        unit_of_measurement: 'min',
+                    },
+                    detergent_level: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-detergent_level',
+                        state_topic: '$this/detergent_level',
+                        name: 'Detergent level setting',
+                        icon: 'mdi:cup-water',
+                    },
+                    // Extra rinse, pre-wash, cold wash, door and door lock are only decoded from
+                    // 0xEC/0xEB frames, which this model hasn't been seen sending. They're left out
+                    // of discovery so they don't sit at Unknown in HA; processStatus still publishes
+                    // their state topics if a unit does send those frames.
                 },
             }),
         )
@@ -366,6 +429,24 @@ export default class Device extends AABBDevice {
             setting('soil', DUMP_SOIL_OFFSET, SOIL)
             setting('temp', DUMP_TEMP_OFFSET, TEMP)
             setting('spin', DUMP_SPIN_OFFSET, SPIN)
+
+            const flags = at(DUMP_FLAGS_OFFSET)
+            const option = (name: string, bit: number) => {
+                if ((flags & bit) !== 0) this.publishProperty(name, 'ON')
+                else if (presetting) this.publishProperty(name, 'OFF')
+            }
+            option('turbo_wash', FLAG_TURBO_WASH)
+            option('steam', FLAG_STEAM)
+            option('delay_wash', FLAG_DELAY_ACTIVE)
+            this.publishProperty('reserve_time', hm(DUMP_RESERVE_OFFSET))
+
+            if (buf.length > DUMP_DETERGENT_OFFSET + shift) {
+                const detergent = at(DUMP_DETERGENT_OFFSET) & DUMP_DETERGENT_MASK
+                this.publishProperty(
+                    'detergent_level',
+                    DETERGENT_LEVEL.map(detergent) ?? `0x${detergent.toString(16).padStart(2, '0')}`,
+                )
+            }
         }
         if (!cycleEnd) this.publishProperty('tub_clean_count', at(DUMP_TUB_CLEAN_COUNT_OFFSET))
     }

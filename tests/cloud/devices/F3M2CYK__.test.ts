@@ -140,6 +140,18 @@ const RINSE_SPIN_BD_SELECTING = buf(
     'AA0020BD0001019001020B050012001200001000000200010400070000206A000300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000550000000000000000000000017A026EF1F2010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000030000000000000000000000000000000000000000000000000000004BB',
 )
 
+// ── Eighth capture: Allergiene (course 0x03), 2026-09-23 23:48Z, panel photo: Allergiene, Steam and
+// Delay Wash lit (display 1:00), TurboWash and Extra Rinse off, High spin, detergent 2 bars ──────────
+
+// Selected with a 1:00 delay: options 0x06 (Steam + Delay), delay time 01 00.
+const ALLERGIENE_BD_DELAY_SET = buf(
+    'AA0020BD0007019001020B050209020901000300000000020400000600006A00040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001770258000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000082000000003000000000000000000000000000000000000000000000000000001FBB',
+)
+// Four minutes later: phase 0x0a (Delay Wash), delay counting down (00 39 = 0:57).
+const ALLERGIENE_CD_DELAY_WAITING = buf(
+    'AA0020CD00019001020B0A0127012700390300000000020400010680026A000400000000000000043E3C3A39381F1F1F1F1FFFFFFFFFFF0000000000000000000000000000000000000000000000000000000000008484848484B6B00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010054060000000000000000032E017B027D00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008200000000300000000000000000000000000000000000000000000000000000EEBB',
+)
+
 // Real mystery frame, currently undecoded: an unidentified 0x7F type (~10 over 2 days).
 const MYSTERY_7F = buf('AA09207F010040C6BB')
 
@@ -166,11 +178,16 @@ describe(MODEL_ID, () => {
             'soil',
             'spin',
             'temp',
+            'turbo_wash',
+            'steam',
+            'delay_wash',
+            'reserve_time',
+            'detergent_level',
         ]) {
             assert.ok(components[c], `component ${c} present`)
         }
         // 0xEC/0xEB-only fields this model never sends must not be advertised (they'd sit at Unknown)
-        for (const c of ['door', 'door_lock', 'turbo_wash', 'reserve_time']) {
+        for (const c of ['door', 'door_lock', 'extra_rinse', 'pre_wash', 'cold_wash']) {
             assert.equal(components[c], undefined, `component ${c} absent`)
         }
         assert.equal(components.initial_time.device_class, 'duration')
@@ -372,6 +389,55 @@ describe(MODEL_ID, () => {
         assert.equal(p.temp, 'Cold')
         assert.equal(p.spin, 'High')
         assert.equal(p.soil, '-') // Rinse+Spin has no soil setting
+    })
+
+    test('Steam stays ON after the Tub Clean clears the bit at rinse (real captures)', () => {
+        const { ha, thinq } = makeDevice()
+        const p = ha.devices[DEVICE_ID].properties
+        thinq.emit('data', TC_BD_SELECTING)
+        assert.equal(p.steam, 'ON')
+        thinq.emit('data', TC_CD_WASHING_UNDER_HOUR)
+        assert.equal(p.steam, 'ON')
+    })
+
+    test('Allergiene with Delay Wash: options, delay countdown and Delay Wash phase (real captures)', () => {
+        const { ha, thinq } = makeDevice()
+        const p = ha.devices[DEVICE_ID].properties
+
+        thinq.emit('data', ALLERGIENE_BD_DELAY_SET)
+        assert.equal(p.course, 'Allergiene')
+        assert.equal(p.steam, 'ON')
+        assert.equal(p.delay_wash, 'ON')
+        assert.equal(p.turbo_wash, 'OFF')
+        assert.equal(p.reserve_time, 60)
+        assert.equal(p.detergent_level, 'Normal')
+
+        thinq.emit('data', ALLERGIENE_CD_DELAY_WAITING)
+        assert.equal(p.status, 'Delay Wash')
+        assert.equal(p.reserve_time, 57)
+        assert.equal(p.delay_wash, 'ON')
+    })
+
+    test('TurboWash, Steam and detergent level match the other panel photos (real captures)', () => {
+        const cases = [
+            // frame, turbo_wash, steam, detergent_level (bars in the photo)
+            [CD_WASHING, 'ON', 'OFF', 'More'], // Normal, 09-21: TurboWash lit, 3 bars
+            [HEAVY_DUTY_BD_SELECTING, 'ON', 'OFF', 'More'], // Heavy Duty: TurboWash lit, 3 bars
+            [SANITARY_CD_WASHING, 'OFF', 'OFF', 'Normal'], // Sanitary: both off, 2 bars
+            [RINSE_SPIN_BD_SELECTING, 'OFF', 'OFF', 'Off'], // Rinse+Spin: both off, no bars
+            [TC_CD_WASHING, 'OFF', 'ON', 'Off'], // Tub Clean: Steam lit, doesn't dispense
+        ] as const
+        for (const [frame, turbo, steam, detergent] of cases) {
+            const { ha, thinq } = makeDevice()
+            const p = ha.devices[DEVICE_ID].properties
+            thinq.emit('data', RINSE_SPIN_BD_SELECTING) // selecting, all options off: sets the baseline
+            thinq.emit('data', frame)
+            assert.equal(p.turbo_wash, turbo)
+            assert.equal(p.steam, steam)
+            assert.equal(p.delay_wash, 'OFF')
+            assert.equal(p.reserve_time, 0)
+            assert.equal(p.detergent_level, detergent)
+        }
     })
 
     test('soil/temp/spin decode against the load 1 panel photo and hold once their stage has cleared them', () => {
