@@ -345,6 +345,7 @@ describe(MODEL_ID, () => {
         assert.equal(props.remaining_time, 1)
         assert.equal(props.rinse_refill, 'ON')
         assert.equal(props.door_open, 'OFF')
+        assert.equal(props.night_dry, 'OFF') // bit clear once the machine is idle
     })
 
     test('0xEC Complete/Complete publishes both fields as Complete (real capture)', () => {
@@ -355,6 +356,8 @@ describe(MODEL_ID, () => {
         assert.equal(props.process_state, 'Complete')
         assert.equal(props.running, 'OFF')
         assert.equal(props.current_course, '-')
+        // Night Dry follows this run; the bit stays set through Complete, so it mustn't flicker OFF
+        assert.equal(props.night_dry, 'ON')
     })
 
     test('0xEC Running/Rinsing publishes 92 min remaining (real capture)', () => {

@@ -212,7 +212,9 @@ export default class Device extends AABBDevice {
     //            panel photos on an LDT54788D: set on the 2026-09-21 Heavy and 2026-09-23 Delicate
     //            runs (Night Dry lamp lit, both followed by the process 0x06 phase), clear on a
     //            2026-09-23 Normal run with the lamp off (no 0x06 phase followed), and set again on
-    //            a 2026-09-24 Turbo run with the lamp lit. Only reported while a course is active.
+    //            a 2026-09-24 Turbo run with the lamp lit. Set only while a course is selected or
+    //            running and in the Complete state that precedes the Night Dry phase; clear in
+    //            every Off/Done/idle record captured, so it's published without the active gate.
     //   [14]     options bitfield: bit 1 (0x02) = energy saver — verified 2026-09-18, and on an
     //            LDT54788D 2026-09-24 (Normal course, the only option set).
     //            bit 6 (0x40) = half load, bit 2 (0x04) = extra dry — verified 2026-09-23: on a
@@ -315,7 +317,7 @@ export default class Device extends AABBDevice {
         this.publishProperty('high_temp', active && optionBits & 0x08 ? 'ON' : 'OFF')
         this.publishProperty('dual_zone', active && optionBits & 0x10 ? 'ON' : 'OFF')
         this.publishProperty('delay_start', active && optionBits & 0x01 ? 'ON' : 'OFF')
-        this.publishProperty('night_dry', active && statusBits & 0x80 ? 'ON' : 'OFF')
+        this.publishProperty('night_dry', statusBits & 0x80 ? 'ON' : 'OFF')
         this.publishProperty('rinse_refill', statusBits & 0x08 ? 'ON' : 'OFF')
         this.publishProperty('door_open', statusBits & 0x02 ? 'ON' : 'OFF')
     }
