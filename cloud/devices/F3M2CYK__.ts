@@ -68,9 +68,9 @@ const DUMP_COURSE_OFFSET = 15
 // end. There is no days-based counter in any frame.
 const DUMP_TUB_CLEAN_COUNT_OFFSET = 29
 // Soil, temp and spin, using the same SOIL/TEMP/SPIN indices as the 0xEC/0xEB record. Confirmed
-// against four panel photos: Normal/Warm/High/Normal soil reads 03/04/04, Heavy Duty/Cold/Medium/Light
+// against five panel photos: Normal/Warm/High/Normal soil reads 03/04/04, Heavy Duty/Cold/Medium/Light
 // soil reads 01/02/03, Sanitary/Extra Hot/High/Normal soil reads 03/07/04, Bright Whites/Hot/Extra
-// High/Heavy soil reads 05/06/05. Other loads fit the same scales (Normal and Towels read Warm with
+// High/Heavy soil reads 05/06/05, Delicates/Tap Cold/Low/Light-Normal soil reads 02/01/02. Other loads fit the same scales (Normal and Towels read Warm with
 // Normal soil, Rinse+Spin reads Cold with no soil, Tub Clean reads neither). 0x00 means "not applicable": soil
 // clears when Rinsing starts and temp when Spinning starts, while spin holds for the whole cycle.
 // Delay Wash time remaining, [hour][minute], counting down while phase == Delay Wash (0x0a); 00 00
@@ -82,8 +82,7 @@ const DUMP_RESERVE_OFFSET = 13
 // lit and clear on Sanitary, Rinse+Spin, Tub Clean and Allergiene with it off; Steam (0x04) set only on
 // Tub Clean and Allergiene, the two with the Steam lamp lit; Delay (0x02) set only on the delayed
 // Allergiene load; Extra Rinse (0x40) set on a Bright Whites load with the Extra Rinse lamp lit and
-// clear on all the others. Pre-wash (0x08) hasn't been seen set yet, so it isn't published from this
-// frame. TurboWash and Steam can clear once their stage is over (Steam cleared
+// clear on all the others; Pre-wash (0x08) set only on a Delicates load with the Pre-wash lamp lit. TurboWash and Steam can clear once their stage is over (Steam cleared
 // when the Tub Clean started rinsing), so like soil/temp a cleared bit only counts before the cycle is
 // under way. Delay is a live state instead: it cleared when the Allergiene load's delay ran out.
 const DUMP_FLAGS_OFFSET = 24
@@ -201,6 +200,7 @@ const DUMP_COURSE = Enum.of({
     Sanitary: 0x02,
     Allergiene: 0x03,
     'Bright Whites': 0x08,
+    Delicates: 0x0a,
     Normal: 0x06,
     'Heavy Duty': 0x07,
     'Tub Clean': 0x0d,
@@ -342,6 +342,13 @@ export default class Device extends AABBDevice {
                         name: 'Extra rinse',
                         icon: 'mdi:water-sync',
                     },
+                    pre_wash: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-pre_wash',
+                        state_topic: '$this/pre_wash',
+                        name: 'Pre-wash',
+                        icon: 'mdi:water-sync',
+                    },
                     delay_wash: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-delay_wash',
@@ -365,7 +372,7 @@ export default class Device extends AABBDevice {
                         name: 'Detergent level setting',
                         icon: 'mdi:cup-water',
                     },
-                    // Pre-wash, cold wash, door and door lock are only decoded from
+                    // Cold wash, door and door lock are only decoded from
                     // 0xEC/0xEB frames, which this model hasn't been seen sending. They're left out
                     // of discovery so they don't sit at Unknown in HA; processStatus still publishes
                     // their state topics if a unit does send those frames.
@@ -450,6 +457,7 @@ export default class Device extends AABBDevice {
             option('turbo_wash', FLAG_TURBO_WASH)
             option('steam', FLAG_STEAM)
             option('extra_rinse', FLAG_EXTRA_RINSE)
+            option('pre_wash', FLAG_PRE_WASH)
             this.publishProperty('delay_wash', (flags & FLAG_DELAY_ACTIVE) !== 0 ? 'ON' : 'OFF')
             this.publishProperty('reserve_time', hm(DUMP_RESERVE_OFFSET))
 
