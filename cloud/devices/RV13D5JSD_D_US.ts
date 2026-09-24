@@ -25,8 +25,8 @@ import log from '@/util/logging'
 //          rec[7]     cycle — 0x03 on a load with Normal dry level; 0x07 = Bedding and 0x01 = Heavy
 //                     Duty (panel photos, as in the sibling map); 0x02 = Towels and 0x15 = Steam Fresh (confirmed by the user);
 //                     unmapped codes are published as their raw hex value
-//          rec[9]     dry level — 0x03/Normal, 0x05/Very and 0x00/none (steam cycle, no dry-level
-//                     lamp lit)
+//          rec[9]     dry level — 0x01/Damp, 0x03/Normal, 0x05/Very and 0x00/none (steam cycle, no
+//                     dry-level lamp lit)
 //          rec[10]    temp — 0x05/High, 0x04/Med High (the unlabeled lamp between High and Medium) and
 //                     0x03/Medium, each matching the panel photo
 //          rec[17]    bit 0x02 = Energy Saver — set (0xab) only on the one cycle with the Energy Saver
