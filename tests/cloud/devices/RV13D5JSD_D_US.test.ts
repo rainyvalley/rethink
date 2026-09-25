@@ -64,6 +64,8 @@ const E2_MANUAL_TIME_DRY_ULTRA_LOW = buf('AA2330E2031B32002800281200000103000000
 // (rec[11] = 0x03, Ultra Low).
 const E2_TIME_DRY_20 = buf('AA2330E2031B32001400141200000501000000000028000052010000007200000009BB')
 const E2_TIME_DRY_40 = buf('AA2330E2031B320028002812000001030000000000290000A3010000007200000081BB')
+// Speed Dry (0x10), a 25-minute timed cycle: High, no dry level (panel photo).
+const E2_SPEED_DRY = buf('AA2330E2031B3200190019100000050000000000002900006601000000720000002DBB')
 const E2_STEAM_CYCLE = buf('AA2330E2031B32000A000A15000004000000000000A90000420100000272000000E9BB')
 
 // A real 0xEB single-record frame for the sibling RV13U6AM8W_D_US_WIFI model (identical processRecord
@@ -250,6 +252,12 @@ describe(MODEL_ID, () => {
         assert.equal(props.temp, 'Ultra Low')
         thinq.emit('data', E2_PERM_PRESS)
         assert.equal(props.time_dry, 0) // sensor cycle
+
+        thinq.emit('data', E2_SPEED_DRY)
+        assert.equal(props.cycle, 'Speed Dry')
+        assert.equal(props.cycle_time, 25)
+        assert.equal(props.temp, 'High')
+        assert.equal(props.dry_level, 'None')
 
         // TurboSteam: set on both Heavy Duty + TurboSteam cycles, clear on regular cycles without
         // it and on the dedicated Steam Fresh and Steam Sanitary cycles

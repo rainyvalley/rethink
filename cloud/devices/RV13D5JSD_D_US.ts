@@ -26,7 +26,8 @@ import log from '@/util/logging'
 //                     Duty (panel photos, as in the sibling map), 0x05 = Delicates and 0x04 = Perm.
 //                     Press (as in the map); 0x02 = Towels and 0x15 = Steam Fresh (confirmed by the user),
 //                     0x16 = Steam Sanitary, 0x11 = Air Dry and
-//                     0x12 = Manual (Time Dry on the Manual Dry dial position) (panel photos);
+//                     0x12 = Manual (Time Dry on the Manual Dry dial position) and 0x10 = Speed Dry
+//                     (panel photos);
 //                     unmapped codes are published as their raw hex value
 //          rec[9]     dry level — 0x01/Damp, 0x02/Less (the step between Damp and Normal),
 //                     0x03/Normal, 0x04/More (the step between Normal and Very), 0x05/Very and
