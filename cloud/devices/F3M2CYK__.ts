@@ -108,6 +108,12 @@ const DUMP_OPT2_FRESH_CARE = 0x01
 // 0x80 to 0xc0 while it was being selected, so it's the setting rather than the tank level.
 const DUMP_DETERGENT_OFFSET = 373
 const DUMP_DETERGENT_MASK = 0xc0
+// Same byte: softener level in bits 0x30, the same scale as detergent one pair of bits down — 0x20 with
+// two softener bars lit (Perm. Press), 0x30 with three (Downloaded), 0x00 on every load photographed
+// with the softener bars dark. Bit 0x04 = the red softener Refill warning: set only on the Perm. Press
+// load photographed with it lit, and gone after the tank was refilled.
+const DUMP_SOFTENER_MASK = 0x30
+const DUMP_SOFTENER_REFILL = 0x04
 const DUMP_SOIL_OFFSET = 17
 const DUMP_TEMP_OFFSET = 18
 const DUMP_SPIN_OFFSET = 21
@@ -188,6 +194,14 @@ const DETERGENT_LEVEL = Enum.of({
     Less: 0x40,
     Normal: 0x80,
     More: 0xc0,
+})
+
+// 1 bar (0x10) hasn't been seen but follows the same scale.
+const SOFTENER_LEVEL = Enum.of({
+    Off: 0x00,
+    Less: 0x10,
+    Normal: 0x20,
+    More: 0x30,
 })
 
 // Course/dial-position identifier -> name. Live-confirmed by turning the dial through every position and
@@ -413,6 +427,20 @@ export default class Device extends AABBDevice {
                         device_class: 'duration',
                         unit_of_measurement: 'min',
                     },
+                    softener_level: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-softener_level',
+                        state_topic: '$this/softener_level',
+                        name: 'Softener level setting',
+                        icon: 'mdi:cup-water',
+                    },
+                    softener_refill: {
+                        platform: 'binary_sensor',
+                        unique_id: '$deviceid-softener_refill',
+                        state_topic: '$this/softener_refill',
+                        name: 'Softener refill',
+                        icon: 'mdi:water-alert',
+                    },
                     detergent_level: {
                         platform: 'sensor',
                         unique_id: '$deviceid-detergent_level',
@@ -519,11 +547,14 @@ export default class Device extends AABBDevice {
             this.publishProperty('reserve_time', hm(DUMP_RESERVE_OFFSET))
 
             if (buf.length > DUMP_DETERGENT_OFFSET + shift) {
-                const detergent = at(DUMP_DETERGENT_OFFSET) & DUMP_DETERGENT_MASK
+                const dispense = at(DUMP_DETERGENT_OFFSET)
+                const detergent = dispense & DUMP_DETERGENT_MASK
                 this.publishProperty(
                     'detergent_level',
                     DETERGENT_LEVEL.map(detergent) ?? `0x${detergent.toString(16).padStart(2, '0')}`,
                 )
+                this.publishProperty('softener_level', SOFTENER_LEVEL.map(dispense & DUMP_SOFTENER_MASK))
+                this.publishProperty('softener_refill', (dispense & DUMP_SOFTENER_REFILL) !== 0 ? 'ON' : 'OFF')
             }
         }
         if (!cycleEnd) this.publishProperty('tub_clean_count', at(DUMP_TUB_CLEAN_COUNT_OFFSET))
