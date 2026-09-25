@@ -180,7 +180,7 @@ const PHASE_COMPLETE = 0x3c
 const STATUS = Enum.of({
     Off: 0x00,
     Selecting: 0x05,
-    Paused: 0x06,
+    Paused: 0x06, // seen 2026-09-25: a Rinse+Spin paused right after Start
     'Delay Wash': 0x0a,
     Sensing: 0x14,
     Washing: 0x17,
