@@ -60,6 +60,10 @@ const E2_AIR_DRY = buf('AA2330E2031B32001E001E110000000000000000002900007A010000
 // Control Lock on (panel photo). rec[11] = 0x03, zero on every earlier cycle — probably the Time Dry
 // step (20/30/40/50/60 lamps -> 40 = 3rd), not published; nothing else changed with the lock on.
 const E2_MANUAL_TIME_DRY_ULTRA_LOW = buf('AA2330E2031B320028002812000001030000000000290000A3010000007200000081BB')
+// Time Dry (Manual, 0x12) at 20 minutes (rec[11] = 0x01, High; panel photo) and at 40 minutes
+// (rec[11] = 0x03, Ultra Low).
+const E2_TIME_DRY_20 = buf('AA2330E2031B32001400141200000501000000000028000052010000007200000009BB')
+const E2_TIME_DRY_40 = buf('AA2330E2031B320028002812000001030000000000290000A3010000007200000081BB')
 const E2_STEAM_CYCLE = buf('AA2330E2031B32000A000A15000004000000000000A90000420100000272000000E9BB')
 
 // A real 0xEB single-record frame for the sibling RV13U6AM8W_D_US_WIFI model (identical processRecord
@@ -99,6 +103,7 @@ describe(MODEL_ID, () => {
             'turbo_steam',
             'wrinkle_care',
             'reduce_static',
+            'time_dry',
         ]) {
             assert.ok(components[c], `component ${c} present`)
         }
@@ -234,6 +239,17 @@ describe(MODEL_ID, () => {
         assert.equal(props.cycle_time, 31)
         assert.equal(props.dry_level, 'None')
         assert.equal(props.temp, 'High')
+
+        thinq.emit('data', E2_TIME_DRY_20)
+        assert.equal(props.cycle, 'Manual')
+        assert.equal(props.cycle_time, 20)
+        assert.equal(props.time_dry, 20)
+        assert.equal(props.temp, 'High')
+        thinq.emit('data', E2_TIME_DRY_40)
+        assert.equal(props.time_dry, 40)
+        assert.equal(props.temp, 'Ultra Low')
+        thinq.emit('data', E2_PERM_PRESS)
+        assert.equal(props.time_dry, 0) // sensor cycle
 
         // TurboSteam: set on both Heavy Duty + TurboSteam cycles, clear on regular cycles without
         // it and on the dedicated Steam Fresh and Steam Sanitary cycles

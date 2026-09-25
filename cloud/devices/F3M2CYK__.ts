@@ -120,6 +120,12 @@ const DUMP_SPIN_OFFSET = 21
 
 // 0xD8: buf[2] = washes since the last Tub Clean. The power-on burst of 0x00 is a placeholder, so a
 // zero is only taken from the first 0xD8 after the cycle-end 0x72 00 (i.e. a Tub Clean just finished).
+// 0x7F (5 bytes: 20 7F 01 00 XX), sent in a burst about a minute into a cycle once the washer has sensed
+// the load: buf[4] is a relative load size — 0x13 with a single washcloth, 0x3a and 0x2d on towel loads,
+// 0x40 on the fullest loads. Not a weight in any known unit; higher = heavier. Courses that skip
+// sensing (Rinse+Spin, Tub Clean) don't send it. The same value appears later in 0xCD buf[376].
+const LOAD_FRAME_TYPE = 0x7f
+const LOAD_SIZE_OFFSET = 4
 const COUNTER_FRAME_TYPE = 0xd8
 const COUNTER_OFFSET = 2
 
@@ -426,6 +432,14 @@ export default class Device extends AABBDevice {
                         device_class: 'duration',
                         unit_of_measurement: 'min',
                     },
+                    load_size: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-load_size',
+                        state_topic: '$this/load_size',
+                        name: 'Sensed load size',
+                        icon: 'mdi:weight',
+                        state_class: 'measurement',
+                    },
                     softener_level: {
                         platform: 'sensor',
                         unique_id: '$deviceid-softener_level',
@@ -468,6 +482,8 @@ export default class Device extends AABBDevice {
         if (buf[1] === BD_FRAME_TYPE) return this.processDump(buf, BD_SHIFT)
         if (buf[1] === HEARTBEAT_FRAME_TYPE && buf.length > HEARTBEAT_STATE_OFFSET) return this.processHeartbeat(buf)
         if (buf[1] === COUNTER_FRAME_TYPE && buf.length > COUNTER_OFFSET) return this.processCounter(buf)
+        if (buf[1] === LOAD_FRAME_TYPE && buf.length > LOAD_SIZE_OFFSET)
+            return this.publishProperty('load_size', buf[LOAD_SIZE_OFFSET])
         // 0x31 (serial), 0xE2 (end-of-cycle summary) and anything else not yet decoded land here so
         // they show up in the logs for future status-code hunting.
         log('F3M2CYK__', 'unrecognized frame', buf.toString('hex'))

@@ -33,6 +33,9 @@ import log from '@/util/logging'
 //                     0x00/none (steam cycle, no dry-level lamp lit)
 //          rec[10]    temp — 0x01/Ultra Low (Manual + Time Dry, panel photo), 0x05/High, 0x04/Med High (the unlabeled lamp between High and Medium) and
 //                     0x03/Medium, each matching the panel photo
+//          rec[11]    Time Dry setting in 10-minute steps above 10: 0x01 on a 20-minute Time Dry and
+//                     0x03 on a 40-minute one (the panel's scale is 20/30/40/50/60), 0x00 on every
+//                     sensor cycle
 //          rec[16]    options: bit 0x10 = Wrinkle Care — set only on a Small Load cycle photographed
 //                     with the Wrinkle Care lamp lit (and the drum restarted after the cycle for the
 //                     wrinkle-care tumble); bit 0x02 = Reduce Static — set only on a Sportswear cycle
@@ -68,6 +71,7 @@ const SUMMARY_TIME_MIN = 4
 const SUMMARY_CYCLE = 7
 const SUMMARY_DRY_LEVEL = 9
 const SUMMARY_TEMP = 10
+const SUMMARY_TIME_DRY_STEP = 11
 const SUMMARY_OPTIONS = 16
 const SUMMARY_OPTION_WRINKLE_CARE = 0x10
 const SUMMARY_OPTION_REDUCE_STATIC = 0x02
@@ -179,6 +183,15 @@ export default class Device extends AABBDevice {
                         device_class: 'enum',
                         options: DRY_LEVELS.options,
                     },
+                    time_dry: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-time_dry',
+                        state_topic: '$this/time_dry',
+                        name: 'Last cycle Time Dry setting',
+                        icon: 'mdi:timer-cog-outline',
+                        device_class: 'duration',
+                        unit_of_measurement: 'min',
+                    },
                     reduce_static: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-reduce_static',
@@ -266,6 +279,8 @@ export default class Device extends AABBDevice {
     private processSummary(rec: Buffer) {
         this.publishProperty('cycle', this.cycleName(rec[SUMMARY_CYCLE]))
         this.publishProperty('cycle_time', rec[SUMMARY_TIME_HOUR] * 60 + rec[SUMMARY_TIME_MIN])
+        const timeDryStep = rec[SUMMARY_TIME_DRY_STEP]
+        this.publishProperty('time_dry', timeDryStep ? 10 + timeDryStep * 10 : 0)
         this.publishProperty('temp', TEMPS.map(rec[SUMMARY_TEMP]))
         this.publishProperty('dry_level', DRY_LEVELS.map(rec[SUMMARY_DRY_LEVEL]))
         this.publishProperty('energy_saver', (rec[SUMMARY_FLAGS] & SUMMARY_FLAG_ENERGY_SAVER) !== 0 ? 'ON' : 'OFF')

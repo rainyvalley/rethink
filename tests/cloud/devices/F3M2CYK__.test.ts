@@ -236,8 +236,14 @@ const RINSE_SPIN_CD_PAUSED = buf(
     'AA0020CD00019001020B060012001200001000000200010400070000206A000900000000000000041F1F1F1F201A1A1A1A1AFDFDFDFDFD0000000000000000000000000000000000000000000000000000000000008383838383B9DA00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000017D0246FD0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002000000003000000000000000000000000000000000000000000000000000006EBB',
 )
 
-// Real mystery frame, currently undecoded: an unidentified 0x7F type (~10 over 2 days).
-const MYSTERY_7F = buf('AA09207F010040C6BB')
+// 0x7F sensed-load frames: 0x40 on the first (full) Normal load, 0x13 with a single washcloth.
+const LOAD_FULL = buf('AA09207F010040C6BB')
+const LOAD_WASHCLOTH = buf('AA09207F01001333BB')
+
+// Real 0x31 serial/identity frame, sent once per reconnect — not decoded.
+const SERIAL = buf(
+    'AA372031020153414134303438343330320000F54F00008000000000000253414134303438343230320000B371000040000007C00054BB',
+)
 
 function makeDevice() {
     const ha = new MockHAConnection()
@@ -275,6 +281,7 @@ describe(MODEL_ID, () => {
             'control_lock',
             'softener_level',
             'softener_refill',
+            'load_size',
         ]) {
             assert.ok(components[c], `component ${c} present`)
         }
@@ -722,19 +729,28 @@ describe(MODEL_ID, () => {
 
     // ── Logging (for future status-code hunting) ────────────────────────────────
 
-    test('undecoded frame types (0x7F) are logged, 0xD8 is not (real captures)', () => {
+    test('0x7F publishes the sensed load size (real captures)', () => {
+        const { ha, thinq } = makeDevice()
+        thinq.emit('data', LOAD_FULL)
+        assert.equal(ha.devices[DEVICE_ID].properties.load_size, 0x40)
+        thinq.emit('data', LOAD_WASHCLOTH)
+        assert.equal(ha.devices[DEVICE_ID].properties.load_size, 0x13)
+    })
+
+    test('undecoded frame types (0x31 serial) are logged; 0xD8 and 0x7F are not (real captures)', () => {
         const { thinq } = makeDevice()
         const cap = captureLog()
         try {
             thinq.emit('data', COUNT_POWER_ON_PLACEHOLDER)
-            thinq.emit('data', MYSTERY_7F)
+            thinq.emit('data', LOAD_FULL)
+            thinq.emit('data', SERIAL)
             assert.equal(cap.calls.length, 1)
             for (const call of cap.calls) {
                 const [, topic, message] = call.arguments
                 assert.equal(topic, 'F3M2CYK__')
                 assert.equal(message, 'unrecognized frame')
             }
-            assert.equal(cap.calls[0].arguments[3], MYSTERY_7F.subarray(2, -2).toString('hex'))
+            assert.equal(cap.calls[0].arguments[3], SERIAL.subarray(2, -2).toString('hex'))
         } finally {
             cap.restore()
         }
