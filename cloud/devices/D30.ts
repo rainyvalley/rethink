@@ -250,9 +250,10 @@ export default class Device extends AABBDevice {
     //            from 2026-09-21, with the Dual Zone and High Temp lamps lit, read 0x18.
     //            bit 0 (0x01) = Delay Start — set when Delay Start was pressed on a Turbo run
     //            (2026-09-24, lamp lit in the panel photo).
+    //            bit 7 (0x80) = steam on the EU D0211 (verified by @Stinocon); the LDT54788D
+    //            has no Steam option and never set it, so it isn't published here.
     //            Like the course byte, it clears to 0x00 at cycle end (state 0x04/0x05).
-    // Still TODO (need more washes/options): other option bits (steam, ...),
-    // error codes.
+    // Still TODO: error codes.
     processAABB(buf: Buffer) {
         // 0xd8 (3 bytes: 32 D8 XX): the wash counter the fork exposed as tub_clean_counter. On an
         // LDT54788D it went 0x28 -> 0x2e over 2026-09-22..24, up by one each time a wash reached its
