@@ -257,8 +257,8 @@ export default class Device extends AABBDevice {
         // 0xd8 (3 bytes: 32 D8 XX): the wash counter the fork exposed as tub_clean_counter. On an
         // LDT54788D it went 0x28 -> 0x2e over 2026-09-22..24, up by one each time a wash reached its
         // drying stage (Heavy, Delicate, Normal, Turbo, Auto, Express, Rinse), and is resent unchanged
-        // at power-on. Whether a completed Machine Clean resets it hasn't been seen yet (the one
-        // Machine Clean run was cancelled part-way), so it may be a lifetime count.
+        // at power-on. A completed Machine Clean reset it to 0 (2026-09-25: 0x2e -> 0x00 three seconds
+        // after the cycle ended), so it counts washes since the last Machine Clean.
         if (buf[0] === 0x32 && buf[1] === 0xd8 && buf.length > 2) {
             this.publishProperty('tub_clean_counter', buf[2])
             return

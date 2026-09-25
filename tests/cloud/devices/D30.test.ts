@@ -145,6 +145,8 @@ const SAMPLE_EC_RINSE_RINSING = buf(
 // 0xD8 wash counter: 0x28 (40) at the 2026-09-22 Heavy run's drying stage, 0x2e (46) at the
 // 2026-09-24 Rinse run's, one per wash in between.
 const SAMPLE_D8_COUNT_40 = buf('AA0732D828B6BB')
+// Reset to 0 three seconds after a completed Machine Clean (2026-09-25 02:09:53Z).
+const SAMPLE_D8_RESET_AFTER_MACHINE_CLEAN = buf('AA0732D800EEBB')
 const SAMPLE_D8_COUNT_46 = buf('AA0732D82EBCBB')
 
 // ── Synthetic edge cases ──────────────────────────────────────────────────────
@@ -389,6 +391,8 @@ describe(MODEL_ID, () => {
         assert.equal(ha.devices[DEVICE_ID].properties.tub_clean_counter, 40)
         thinq.emit('data', SAMPLE_D8_COUNT_46)
         assert.equal(ha.devices[DEVICE_ID].properties.tub_clean_counter, 46)
+        thinq.emit('data', SAMPLE_D8_RESET_AFTER_MACHINE_CLEAN)
+        assert.equal(ha.devices[DEVICE_ID].properties.tub_clean_counter, 0)
     })
 
     test('0xEC Off publishes Off/none, running OFF, no course (real capture)', () => {
