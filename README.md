@@ -53,7 +53,7 @@ the second one is the model it is sold as.
 | FAFXU25006                                       | WM5800HVA, Front-Load Washing Machine            | 👍 mostly working, read-only |
 | F_VB_F\_\_\_W.B_2QEUK                            | CV74J7S2QA, Washer/Dryer Combo                   | 👍 mostly working            |
 | Y_V8_F\_\_\_W.B_2QEUK                            | W4WR70E61, Washer/Dryer Combo                    | 👍 mostly working            |
-| F3M2CYK\_\_                                      | (model name unknown), Front-Load Washing Machine | 👍 mostly working, read-only |
+| F3M2CYK\_\_                                      | WM4500HBA, Front-Load Washing Machine            | 👍 mostly working, read-only |
 
 #### Dryers
 
@@ -63,7 +63,7 @@ the second one is the model it is sold as.
 | RV13B6BSD_D_US_WIFI  | DLEX3900B, Electric Dryer            | 👍 mostly working                                                        |
 | RV13B6ES_D_US_WIFI   | (model name unknown), Electric Dryer | 👍 mostly working                                                        |
 | BDH_D30007_US        | DLHC5502V, Heat-Pump Dryer           | 👍 mostly working, read-only                                             |
-| RV13D5JSD_D_US       | (model name unknown), Electric Dryer | 👍 mostly working, read-only; settings reported at the end of each cycle |
+| RV13D5JSD_D_US       | DLGX4501B, Gas Dryer                 | 👍 mostly working, read-only; settings reported at the end of each cycle |
 
 #### WashTowers (combined washer+dryer)
 

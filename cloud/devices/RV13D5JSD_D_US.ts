@@ -7,7 +7,7 @@ import AABBDevice from './aabb_device'
 import { Enum } from '@/util/enum'
 import log from '@/util/logging'
 
-// LG dryer — matched on modelId "RV13D5JSD_D_US". This handler was originally written for the
+// LG gas dryer (DLGX4501B) — matched on modelId "RV13D5JSD_D_US". This handler was originally written for the
 // 0xEC/0xEB status records below (copied from RV13U6AM8W_D_US_WIFI.ts), but captures of this specific
 // appliance's real traffic (three days, four cycles) showed it never sends those: only 0x31 (serial,
 // once per reconnect), 0x72 (heartbeat) and 0xE2 (end-of-cycle summary, repeated ~10x). The 0xEC/0xEB

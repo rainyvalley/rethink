@@ -7,7 +7,7 @@ import AABBDevice from './aabb_device'
 import { Enum } from '@/util/enum'
 import log from '@/util/logging'
 
-// LG front-load washer — matched on modelId "F3M2CYK__". AABB frames (buf = the AABB body, AA+len and
+// LG front-load washer (WM4500HBA) — matched on modelId "F3M2CYK__". AABB frames (buf = the AABB body, AA+len and
 // checksum+BB already stripped, buf[0]==0x20 on every frame) are discriminated by buf[1] (NOT buf[3],
 // which is a rolling sequence counter for this model):
 //   0x31        one-time device-ID/serial frame at connect — not decoded.
