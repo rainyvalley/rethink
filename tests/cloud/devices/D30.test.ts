@@ -142,6 +142,11 @@ const SAMPLE_EC_RINSE_RINSING = buf(
     'AA3A32EC0018020200000C0600000C0000700002000000000000000000040018020300000C0600000C00007000020000000000000000000436BB',
 )
 
+// 0xD8 wash counter: 0x28 (40) at the 2026-09-22 Heavy run's drying stage, 0x2e (46) at the
+// 2026-09-24 Rinse run's, one per wash in between.
+const SAMPLE_D8_COUNT_40 = buf('AA0732D828B6BB')
+const SAMPLE_D8_COUNT_46 = buf('AA0732D82EBCBB')
+
 // ── Synthetic edge cases ──────────────────────────────────────────────────────
 
 // state=0x07, process=0x09: both unmapped, must fall back to the numeric string.
@@ -195,6 +200,7 @@ describe(MODEL_ID, () => {
             'night_dry',
             'delay_start',
             'delay_start_time',
+            'tub_clean_counter',
         ]) {
             assert.ok(components[c], `component ${c} present`)
         }
@@ -210,7 +216,6 @@ describe(MODEL_ID, () => {
             'auto_door',
             'child_lock',
             'steam',
-            'tub_clean_counter',
             'remote_start',
         ]) {
             assert.ok(!components[c], `component ${c} removed`)
@@ -376,6 +381,14 @@ describe(MODEL_ID, () => {
         thinq.emit('data', SAMPLE_EC_TURBO_DELAYED_LATER)
         assert.equal(props.delay_start_time, 58)
         assert.equal(props.delay_start, 'ON')
+    })
+
+    test('0xD8 publishes the wash counter as tub_clean_counter (real captures)', () => {
+        const { ha, thinq } = makeDevice()
+        thinq.emit('data', SAMPLE_D8_COUNT_40)
+        assert.equal(ha.devices[DEVICE_ID].properties.tub_clean_counter, 40)
+        thinq.emit('data', SAMPLE_D8_COUNT_46)
+        assert.equal(ha.devices[DEVICE_ID].properties.tub_clean_counter, 46)
     })
 
     test('0xEC Off publishes Off/none, running OFF, no course (real capture)', () => {

@@ -142,6 +142,15 @@ export default class Device extends AABBDevice {
                         name: 'High temp',
                         icon: 'mdi:thermometer-high',
                     },
+                    tub_clean_counter: {
+                        platform: 'sensor',
+                        unique_id: '$deviceid-tub_clean_counter',
+                        default_entity_id: 'sensor.lg_dishwasher_tub_clean_counter',
+                        state_topic: '$this/tub_clean_counter',
+                        name: 'Cycles since Machine Clean',
+                        icon: 'mdi:counter',
+                        state_class: 'measurement',
+                    },
                     delay_start: {
                         platform: 'binary_sensor',
                         unique_id: '$deviceid-delay_start',
@@ -245,6 +254,15 @@ export default class Device extends AABBDevice {
     // Still TODO (need more washes/options): other option bits (steam, ...),
     // error codes.
     processAABB(buf: Buffer) {
+        // 0xd8 (3 bytes: 32 D8 XX): the wash counter the fork exposed as tub_clean_counter. On an
+        // LDT54788D it went 0x28 -> 0x2e over 2026-09-22..24, up by one each time a wash reached its
+        // drying stage (Heavy, Delicate, Normal, Turbo, Auto, Express, Rinse), and is resent unchanged
+        // at power-on. Whether a completed Machine Clean resets it hasn't been seen yet (the one
+        // Machine Clean run was cancelled part-way), so it may be a lifetime count.
+        if (buf[0] === 0x32 && buf[1] === 0xd8 && buf.length > 2) {
+            this.publishProperty('tub_clean_counter', buf[2])
+            return
+        }
         if (buf[0] !== 0x32 || (buf[1] !== 0xeb && buf[1] !== 0xec)) {
             log('D30', 'unrecognized frame', buf.toString('hex'))
             return
