@@ -108,9 +108,9 @@ const DUMP_OPT2_FRESH_CARE = 0x01
 // 0x80 to 0xc0 while it was being selected, so it's the setting rather than the tank level.
 const DUMP_DETERGENT_OFFSET = 373
 const DUMP_DETERGENT_MASK = 0xc0
-// Same byte: softener level in bits 0x30, the same scale as detergent one pair of bits down — 0x20 with
-// two softener bars lit (Perm. Press), 0x30 with three (Downloaded), 0x00 on every load photographed
-// with the softener bars dark. Bit 0x04 = the red softener Refill warning: set only on the Perm. Press
+// Same byte: softener level in bits 0x30, the same scale as detergent one pair of bits down — 0x10 with
+// one softener bar set, 0x20 with two lit (Perm. Press), 0x30 with three (Downloaded), 0x00 on every
+// load photographed with the softener bars dark. Bit 0x04 = the red softener Refill warning: set only on the Perm. Press
 // load photographed with it lit, and gone after the tank was refilled.
 const DUMP_SOFTENER_MASK = 0x30
 const DUMP_SOFTENER_REFILL = 0x04
@@ -196,7 +196,6 @@ const DETERGENT_LEVEL = Enum.of({
     More: 0xc0,
 })
 
-// 1 bar (0x10) hasn't been seen but follows the same scale.
 const SOFTENER_LEVEL = Enum.of({
     Off: 0x00,
     Less: 0x10,
