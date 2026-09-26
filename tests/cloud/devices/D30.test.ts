@@ -19,7 +19,7 @@ const META: Metadata = { modelId: MODEL_ID, modelName: 'LDT54788D', swVersion: '
 
 // ── Real captures — 0xEB (single record) ─────────────────────────────────────
 
-// Starting, Heavy selected, 3:14 initial/remaining, door open, rinse aid ok.
+// Selecting, Heavy selected, 3:14 initial/remaining, door open, rinse aid ok.
 const SAMPLE_EB_STARTING = buf('AA2032EB0018010000030E0200030E0000F218020000000000000000000461BB')
 
 // Running / Washing, Heavy, 3:14 initial/remaining, door closed, rinse aid ok.
@@ -229,13 +229,13 @@ describe(MODEL_ID, () => {
         assert.equal(components.initial_time.unit_of_measurement, 'min')
     })
 
-    test('0xEB Starting publishes Starting, Heavy, door open, plain minutes (real capture)', () => {
+    test('0xEB Selecting publishes Selecting, Heavy, door open, plain minutes (real capture)', () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EB_STARTING)
         const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.run_state, 'Starting')
+        assert.equal(props.run_state, 'Selecting')
         assert.equal(props.process_state, '-')
-        assert.equal(props.running, 'ON')
+        assert.equal(props.running, 'OFF') // course picked, not started yet
         assert.equal(props.current_course, 'Heavy')
         assert.equal(props.initial_time, 194)
         assert.equal(props.remaining_time, 194)
@@ -275,7 +275,7 @@ describe(MODEL_ID, () => {
         const props = ha.devices[DEVICE_ID].properties
 
         thinq.emit('data', SAMPLE_EC_HALF_LOAD)
-        assert.equal(props.run_state, 'Starting')
+        assert.equal(props.run_state, 'Selecting')
         assert.equal(props.current_course, 'Delicate')
         assert.equal(props.initial_time, 103)
         assert.equal(props.half_load, 'ON')
@@ -366,7 +366,7 @@ describe(MODEL_ID, () => {
         const props = ha.devices[DEVICE_ID].properties
 
         thinq.emit('data', SAMPLE_EC_TURBO_DELAY_SELECTED)
-        assert.equal(props.run_state, 'Starting')
+        assert.equal(props.run_state, 'Selecting')
         assert.equal(props.current_course, 'Turbo')
         assert.equal(props.initial_time, 59)
         assert.equal(props.delay_start, 'ON')
@@ -486,7 +486,7 @@ describe(MODEL_ID, () => {
 
         thinq.emit('data', SAMPLE_EC_NORMAL_HIGH_TEMP_SELECTING)
         assert.equal(props.night_dry, 'OFF') // Night Dry lamp off in the panel photo
-        assert.equal(props.run_state, 'Starting')
+        assert.equal(props.run_state, 'Selecting')
         assert.equal(props.current_course, 'Normal')
         assert.equal(props.initial_time, 170)
         assert.equal(props.high_temp, 'ON')

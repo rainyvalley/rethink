@@ -6,19 +6,15 @@ import { allowExtendedType } from '@/util/casting'
 import AABBDevice from './aabb_device'
 import log from '@/util/logging'
 
-// LG D30 ThinQ dishwasher (deviceType 204) — DB365TXS / DBC435TSL.AASQEIS.
+// LG D30 ThinQ dishwasher (deviceType 204), sold as the LDT54788D (US).
 //
-// Registers the model and exposes the target entity set. The TLV decode covers the core
-// status fields (validated against three full captures of a real appliance — Eco, Auto +
-// Energy Saver, Auto without); the remaining option bits / error / rinse_refill are still
-// TODO. See the processAABB comment for the field layout, and the companion
-// lg-dishwasher-local project (research/notes/raw-tlv-decode.md) for the full schema.
+// Based on the D0211 handler by @Stinocon (github.com/Stinocon/rethink-dishwasher): same
+// record layout and status-push request, with the fields re-verified against captures and
+// panel photos of an LDT54788D. See the processAABB comment for the field layout.
 //
-// The entity set mirrors the official ha-smartthinq-sensors integration (the
-// `lg_lavastoviglie_*` entities) so existing automations keep working, plus the
-// cloud fields that integration drops (superset). Every component carries an explicit
-// `default_entity_id` so the entity_id is deterministic (`sensor.lg_dishwasher_*` /
-// `binary_sensor.lg_dishwasher_*`) instead of being slugified from the English name.
+// Every component carries an explicit `default_entity_id` so the entity_id is deterministic
+// (`sensor.lg_dishwasher_*` / `binary_sensor.lg_dishwasher_*`) instead of being slugified
+// from the English name.
 
 // 0x32 0xec + 26-byte prior record + 26-byte current record
 const EC_FRAME_LEN = 54
@@ -204,7 +200,7 @@ export default class Device extends AABBDevice {
     // for 0xeb (single record) the record at body[2..27] is the current reading. The handshake
     // hello also starts 0x32 but its second byte is 0x31 ("21" ASCII) — excluded by the flag
     // check. Offsets below are relative to the current record (base = 2 for 0xeb, 28 for 0xec):
-    //   [2]      state    0x01=Starting, 0x02=Running, 0x03=Paused, 0x04=Done, 0x05=Complete
+    //   [2]      state    0x01=Selecting, 0x02=Running, 0x03=Paused, 0x04=Done, 0x05=Complete
     //                     (transient), 0x00=Off/standby (after Done, before the device stops
     //                     reporting). 0x03 seen once, 2026-09-23: for 24 s just after a Normal cycle
     //                     started, with the door-open bit set, then back to 0x02.
@@ -307,7 +303,7 @@ export default class Device extends AABBDevice {
 
         const STATES: Record<number, string> = {
             0x00: 'Off',
-            0x01: 'Starting',
+            0x01: 'Selecting',
             0x02: 'Running',
             0x03: 'Paused',
             0x04: 'Done',
@@ -338,10 +334,13 @@ export default class Device extends AABBDevice {
 
         // `running` binary (on/off) mirrors the cloud's main on/off sensor — the entity the
         // Live Activity automation keys on (to:on / from:on to:off).
+        // 0x01 (Selecting) is the panel on with a course picked and the door open, before
+        // Start: it shows the selected course and options, but nothing is washing yet.
         const active = state === 0x01 || state === 0x02 || state === 0x03
+        const cycle = state === 0x02 || state === 0x03
         // The state byte stays 0x02 (Running) for ~8.5h of post-cycle Night Dry (process
         // 0x06); treat that phase as not running so `running` reflects the actual cycle.
-        this.publishProperty('running', active && process !== 0x06 && process !== 0x01 ? 'ON' : 'OFF')
+        this.publishProperty('running', cycle && process !== 0x06 && process !== 0x01 ? 'ON' : 'OFF')
 
         // Course clears to 0x00 once the cycle ends (state 0x04/0x05); only publish
         // a course while the cycle is active, otherwise '-'.
