@@ -73,9 +73,10 @@ the second one is the model it is sold as.
 
 #### Dishwashers
 
-| ThinQ model | Appliance | Support                      |
-| ----------- | --------- | ---------------------------- |
-| D30         | LDT54788D | 👍 mostly working, read-only |
+| ThinQ model | Appliance              | Support                      |
+| ----------- | ---------------------- | ---------------------------- |
+| D30         | LDT54788D              | 👍 mostly working, read-only |
+| H11         | DUE2BG.AKOR Dishwasher | 👍 mostly working            |
 
 D30 support started from [Stinocon's D0211 dishwasher fork](https://github.com/Stinocon/rethink-dishwasher).
 
@@ -120,6 +121,10 @@ Most of the findings from the reverse engineering process are available on the [
 ## Installation
 
 See the [instructions](https://github.com/anszom/rethink/wiki/Installing-rethink‐cloud).
+
+See also the [Home Assistant App](https://github.com/anszom/rethink-ha/tree/master/rethink).
+
+[![Open your Home Assistant instance and show the add app repository dialog with the repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fanszom%2Frethink-ha)
 
 ## Management
 
