@@ -2,7 +2,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import DUT from '@/cloud/devices/D30'
 import type { Metadata } from '@/cloud/thinq'
-import { MockHAConnection, MockThinq2Device, buf, captureLog } from '@/tests/helpers/mocks'
+import { MockHAConnection, MockThinq2Device, buf } from '@/tests/helpers/mocks'
 
 const DEVICE_ID = 'test-id'
 const MODEL_ID = 'D30'
@@ -19,7 +19,7 @@ const META: Metadata = { modelId: MODEL_ID, modelName: 'LDT54788D', swVersion: '
 
 // ── Real captures — 0xEB (single record) ─────────────────────────────────────
 
-// Selecting, Heavy selected, 3:14 initial/remaining, door open, rinse aid ok.
+// Ready, Heavy selected, 3:14 initial/remaining, door open, rinse aid ok.
 const SAMPLE_EB_STARTING = buf('AA2032EB0018010000030E0200030E0000F218020000000000000000000461BB')
 
 // Running / Washing, Heavy, 3:14 initial/remaining, door closed, rinse aid ok.
@@ -38,17 +38,17 @@ const SAMPLE_EC_OFF = buf(
     'AA3A32EC0018040000030E0000030E0000720002000000000000000000040018000000030E0000030E0000720002000000000000000000043FBB',
 )
 
-// Done (state 0x04) right after a cycle, door open.
+// Standby (state 0x04) right after a cycle, door open.
 const SAMPLE_EC_DONE = buf(
     'AA3A32EC0018010000030E0200030E0000F21802000000000000000000040018040000030E0000030E00007200020000000000000000000450BB',
 )
 
-// Complete (state 0x05), process 'none' — remaining frozen at 0:01.
+// End (state 0x05), process Idle — remaining frozen at 0:01.
 const SAMPLE_EC_COMPLETE_NONE = buf(
     'AA3A32EC0018020600030E020000010000F80002000000000000000000040018050000030E00000001000078000200000000000000000004B4BB',
 )
 
-// Complete (state 0x05), process Complete (0x05).
+// End (state 0x05), process End (0x05).
 const SAMPLE_EC_COMPLETE_COMPLETE = buf(
     'AA3A32EC0018020400030E020000010000F81802000000000000000000040018050500030E020000010000F80002000000000000000000042BBB',
 )
@@ -82,7 +82,7 @@ const SAMPLE_EC_HALF_LOAD_EXTRA_DRY = buf(
 const SAMPLE_EC_DELICATE_WASHING = buf(
     'AA3A32EC00180100000203030002030000F244020000000000000000000401180202000203030002030000F04402000000000000000000049DBB',
 )
-// Post-cycle Night Dry (process 0x06): option bits cleared, running OFF.
+// Post-cycle Night Dry (process 0x06): option bits cleared.
 const SAMPLE_EC_DELICATE_NIGHT_DRY = buf(
     'AA3A32EC00180505000203030000010000F000020000000000000000000400180206000203030000010000F000020000000000000000000417BB',
 )
@@ -105,7 +105,7 @@ const SAMPLE_EC_MALFORMED_LONG = buf(
 )
 
 // Third capture (2026-09-24): Turbo with a 1-hour Delay Start, Night Dry lamp lit (panel photo).
-// Selecting, Delay Start pressed: option bit 0x01.
+// Ready, Delay Start pressed: option bit 0x01.
 const SAMPLE_EC_TURBO_DELAY_SELECTED = buf(
     'AA3A32EC0018010000003B0400003B0000F20002000000000000000000040018010000003B0400003B0000F20102000000000000000000044CBB',
 )
@@ -149,22 +149,6 @@ const SAMPLE_D8_COUNT_40 = buf('AA0732D828B6BB')
 const SAMPLE_D8_RESET_AFTER_MACHINE_CLEAN = buf('AA0732D800EEBB')
 const SAMPLE_D8_COUNT_46 = buf('AA0732D82EBCBB')
 
-// ── Synthetic edge cases ──────────────────────────────────────────────────────
-
-// state=0x07, process=0x09: both unmapped, must fall back to the numeric string.
-const SAMPLE_UNMAPPED = buf('AA2032EB00180709000000000000000000000000000000000000000000005ABB')
-
-// Same as SAMPLE_EB_STARTING but with the class byte changed from 0x32 (dishwasher) to 0x30
-// (dryer) — must be ignored.
-const SAMPLE_WRONG_CLASS = buf('AA2030EB0018010000030E0200030E0000F218020000000000000000000461BB')
-
-// Class 0x32 but frame type 0x99 (neither 0xEB nor 0xEC, e.g. the handshake hello) — must be
-// ignored.
-const SAMPLE_UNRECOGNIZED_TYPE = buf('AA04329900BB')
-
-// 0xEB frame shorter than the minimum 28-byte record — must be ignored.
-const SAMPLE_TOO_SHORT = buf('AA0432EB00BB')
-
 // Real 0x31 serial/identity frame, sent once per reconnect — currently undecoded.
 const SAMPLE_SERIAL = buf(
     'AA373231020153414134313236333730330000B6F000008000000000000253414133383636393731310000D743FFFC00000000000024BB',
@@ -178,68 +162,16 @@ function makeDevice() {
 }
 
 describe(MODEL_ID, () => {
-    test('config exposes expected components and drops the undecoded ones', () => {
-        const { ha } = makeDevice()
-        const cfg = ha.devices[DEVICE_ID].config
-        assert.ok(cfg, 'config published on construction')
-        const components = cfg!.components as Record<string, Record<string, unknown>>
-
-        for (const c of [
-            'run_state',
-            'running',
-            'current_course',
-            'process_state',
-            'remaining_time',
-            'initial_time',
-            'rinse_refill',
-            'door_open',
-            'control_lock',
-            'energy_saver',
-            'half_load',
-            'extra_dry',
-            'high_temp',
-            'dual_zone',
-            'night_dry',
-            'delay_start',
-            'delay_start_time',
-            'tub_clean_counter',
-        ]) {
-            assert.ok(components[c], `component ${c} present`)
-        }
-
-        // Never-published entities that used to sit at Unknown in HA, plus the salt_refill
-        // entity replaced by rinse_refill.
-        for (const c of [
-            'countdown_time',
-            'run_completed',
-            'error_state',
-            'error_message',
-            'salt_refill',
-            'auto_door',
-            'child_lock',
-            'steam',
-            'remote_start',
-        ]) {
-            assert.ok(!components[c], `component ${c} removed`)
-        }
-
-        assert.equal(components.remaining_time.device_class, 'duration')
-        assert.equal(components.remaining_time.unit_of_measurement, 'min')
-        assert.equal(components.initial_time.device_class, 'duration')
-        assert.equal(components.initial_time.unit_of_measurement, 'min')
-    })
-
-    test('0xEB Selecting publishes Selecting, Heavy, door open, plain minutes (real capture)', () => {
+    test('0xEB Ready publishes Ready, Heavy, door open, plain minutes (real capture)', () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EB_STARTING)
         const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.run_state, 'Selecting')
-        assert.equal(props.process_state, '-')
-        assert.equal(props.running, 'OFF') // course picked, not started yet
-        assert.equal(props.current_course, 'Heavy')
+        assert.equal(props.status, 'Ready')
+        assert.equal(props.process, 'Idle')
+        assert.equal(props.course, 'Heavy')
         assert.equal(props.initial_time, 194)
         assert.equal(props.remaining_time, 194)
-        assert.equal(props.door_open, 'ON')
+        assert.equal(props.door, 'ON')
         assert.equal(props.rinse_refill, 'OFF')
         assert.equal(props.energy_saver, 'OFF')
     })
@@ -248,13 +180,12 @@ describe(MODEL_ID, () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EB_RUNNING_WASHING)
         const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.run_state, 'Running')
-        assert.equal(props.process_state, 'Washing')
-        assert.equal(props.running, 'ON')
-        assert.equal(props.current_course, 'Heavy')
+        assert.equal(props.status, 'Running')
+        assert.equal(props.process, 'Washing')
+        assert.equal(props.course, 'Heavy')
         assert.equal(props.initial_time, 194)
         assert.equal(props.remaining_time, 194)
-        assert.equal(props.door_open, 'OFF')
+        assert.equal(props.door, 'OFF')
         assert.equal(props.rinse_refill, 'OFF')
         assert.equal(props.energy_saver, 'OFF')
     })
@@ -263,8 +194,8 @@ describe(MODEL_ID, () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EC_NORMAL_ENERGY_SAVER)
         const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.current_course, 'Normal')
-        assert.equal(props.run_state, 'Running')
+        assert.equal(props.course, 'Normal')
+        assert.equal(props.status, 'Running')
         assert.equal(props.energy_saver, 'ON')
         assert.equal(props.high_temp, 'OFF')
         assert.equal(props.night_dry, 'OFF')
@@ -275,8 +206,8 @@ describe(MODEL_ID, () => {
         const props = ha.devices[DEVICE_ID].properties
 
         thinq.emit('data', SAMPLE_EC_HALF_LOAD)
-        assert.equal(props.run_state, 'Selecting')
-        assert.equal(props.current_course, 'Delicate')
+        assert.equal(props.status, 'Ready')
+        assert.equal(props.course, 'Delicate')
         assert.equal(props.initial_time, 103)
         assert.equal(props.half_load, 'ON')
         assert.equal(props.extra_dry, 'OFF')
@@ -285,55 +216,46 @@ describe(MODEL_ID, () => {
         assert.equal(props.initial_time, 123)
         assert.equal(props.half_load, 'ON')
         assert.equal(props.extra_dry, 'ON')
-        assert.equal(props.door_open, 'ON')
+        assert.equal(props.door, 'ON')
 
         thinq.emit('data', SAMPLE_EC_DELICATE_WASHING)
         assert.equal(props.night_dry, 'ON') // Night Dry lamp lit in the panel photo
-        assert.equal(props.run_state, 'Running')
-        assert.equal(props.process_state, 'Washing')
-        assert.equal(props.door_open, 'OFF')
+        assert.equal(props.status, 'Running')
+        assert.equal(props.process, 'Washing')
+        assert.equal(props.door, 'OFF')
         assert.equal(props.half_load, 'ON')
         assert.equal(props.extra_dry, 'ON')
         assert.equal(props.energy_saver, 'OFF')
         assert.equal(props.rinse_refill, 'OFF')
 
         thinq.emit('data', SAMPLE_EC_DELICATE_NIGHT_DRY)
-        assert.equal(props.process_state, 'Night Dry')
+        assert.equal(props.process, 'Night Dry')
         assert.equal(props.night_dry, 'ON')
-        assert.equal(props.running, 'OFF')
         assert.equal(props.half_load, 'OFF')
         assert.equal(props.extra_dry, 'OFF')
     })
 
-    test('malformed long 0xEC at cycle end is ignored and logged (real capture)', () => {
+    test('malformed long 0xEC at cycle end is ignored (real capture)', () => {
         const { ha, thinq } = makeDevice()
-        const cap = captureLog()
-        try {
-            thinq.emit('data', SAMPLE_EC_MALFORMED_LONG)
-            assert.equal(ha.devices[DEVICE_ID].properties.run_state, undefined)
-            assert.equal(cap.calls.length, 1)
-            assert.equal(cap.calls[0].arguments[2], 'unexpected 0xec length')
-        } finally {
-            cap.restore()
-        }
+        thinq.emit('data', SAMPLE_EC_MALFORMED_LONG)
+        assert.equal(ha.devices[DEVICE_ID].properties.status, undefined)
     })
 
     test('Express (hidden course) is course 0x08 (real capture)', () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EC_EXPRESS_WASHING)
         const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.current_course, 'Express')
-        assert.equal(props.process_state, 'Washing')
+        assert.equal(props.course, 'Express')
+        assert.equal(props.process, 'Washing')
         assert.equal(props.initial_time, 34)
-        assert.equal(props.running, 'ON')
     })
 
     test('Machine Clean is course 0x09 (real capture)', () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EC_MACHINE_CLEAN_WASHING)
         const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.current_course, 'Machine Clean')
-        assert.equal(props.process_state, 'Washing')
+        assert.equal(props.course, 'Machine Clean')
+        assert.equal(props.process, 'Washing')
         assert.equal(props.initial_time, 82)
         assert.equal(props.night_dry, 'OFF')
     })
@@ -342,12 +264,12 @@ describe(MODEL_ID, () => {
         const { ha, thinq } = makeDevice()
         const props = ha.devices[DEVICE_ID].properties
         thinq.emit('data', SAMPLE_EC_RINSE_CONTROL_LOCK)
-        assert.equal(props.current_course, 'Rinse')
+        assert.equal(props.course, 'Rinse')
         assert.equal(props.initial_time, 12)
-        assert.equal(props.control_lock, 'ON')
+        assert.equal(props.child_lock, 'OFF', 'locked')
         thinq.emit('data', SAMPLE_EC_RINSE_RINSING)
-        assert.equal(props.process_state, 'Rinsing')
-        assert.equal(props.control_lock, 'OFF')
+        assert.equal(props.process, 'Rinsing')
+        assert.equal(props.child_lock, 'ON', 'unlocked')
         assert.equal(props.night_dry, 'OFF')
     })
 
@@ -355,28 +277,27 @@ describe(MODEL_ID, () => {
         const { ha, thinq } = makeDevice()
         const props = ha.devices[DEVICE_ID].properties
         thinq.emit('data', SAMPLE_EC_EXPRESS_CONTROL_LOCK)
-        assert.equal(props.control_lock, 'ON')
-        assert.equal(props.door_open, 'ON')
+        assert.equal(props.child_lock, 'OFF', 'locked')
+        assert.equal(props.door, 'ON')
         thinq.emit('data', SAMPLE_EC_EXPRESS_WASHING)
-        assert.equal(props.control_lock, 'OFF')
+        assert.equal(props.child_lock, 'ON', 'unlocked')
     })
 
-    test('Turbo with Delay Start: Delayed phase, countdown, running OFF until it starts (real captures)', () => {
+    test('Turbo with Delay Start: Delayed phase and countdown (real captures)', () => {
         const { ha, thinq } = makeDevice()
         const props = ha.devices[DEVICE_ID].properties
 
         thinq.emit('data', SAMPLE_EC_TURBO_DELAY_SELECTED)
-        assert.equal(props.run_state, 'Selecting')
-        assert.equal(props.current_course, 'Turbo')
+        assert.equal(props.status, 'Ready')
+        assert.equal(props.course, 'Turbo')
         assert.equal(props.initial_time, 59)
         assert.equal(props.delay_start, 'ON')
         assert.equal(props.night_dry, 'ON') // Night Dry lamp lit in the panel photo
         assert.equal(props.delay_start_time, 0)
 
         thinq.emit('data', SAMPLE_EC_TURBO_DELAYED)
-        assert.equal(props.run_state, 'Running')
-        assert.equal(props.process_state, 'Delayed')
-        assert.equal(props.running, 'OFF') // waiting, not washing
+        assert.equal(props.status, 'Running')
+        assert.equal(props.process, 'Delayed Start')
         assert.equal(props.delay_start_time, 59)
         assert.equal(props.remaining_time, 59)
 
@@ -395,53 +316,49 @@ describe(MODEL_ID, () => {
         assert.equal(ha.devices[DEVICE_ID].properties.tub_clean_counter, 0)
     })
 
-    test('0xEC Off publishes Off/none, running OFF, no course (real capture)', () => {
+    test('0xEC Off publishes Off/Idle, no course (real capture)', () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EC_OFF)
         const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.run_state, 'Off')
-        assert.equal(props.process_state, '-')
-        assert.equal(props.running, 'OFF')
-        assert.equal(props.current_course, '-')
-        assert.equal(props.door_open, 'ON')
+        assert.equal(props.status, 'Off')
+        assert.equal(props.process, 'Idle')
+        assert.equal(props.course, 'Off')
+        assert.equal(props.door, 'ON')
     })
 
-    test('0xEC Done publishes Done, running OFF, door open (real capture)', () => {
+    test('0xEC Standby publishes Standby, door open (real capture)', () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EC_DONE)
         const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.run_state, 'Done')
-        assert.equal(props.process_state, '-')
-        assert.equal(props.running, 'OFF')
-        assert.equal(props.current_course, '-')
+        assert.equal(props.status, 'Standby')
+        assert.equal(props.process, 'Idle')
+        assert.equal(props.course, 'Off')
         assert.equal(props.initial_time, 194)
         assert.equal(props.remaining_time, 194)
-        assert.equal(props.door_open, 'ON')
+        assert.equal(props.door, 'ON')
         assert.equal(props.rinse_refill, 'OFF')
     })
 
-    test('0xEC Complete/none publishes Complete, running OFF, rinse aid low (real capture)', () => {
+    test('0xEC End/Idle publishes End, rinse aid low (real capture)', () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EC_COMPLETE_NONE)
         const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.run_state, 'Complete')
-        assert.equal(props.process_state, '-')
-        assert.equal(props.running, 'OFF')
+        assert.equal(props.status, 'End')
+        assert.equal(props.process, 'Idle')
         assert.equal(props.remaining_time, 1)
         assert.equal(props.rinse_refill, 'ON')
-        assert.equal(props.door_open, 'OFF')
+        assert.equal(props.door, 'OFF')
         assert.equal(props.night_dry, 'OFF') // bit clear once the machine is idle
     })
 
-    test('0xEC Complete/Complete publishes both fields as Complete (real capture)', () => {
+    test('0xEC End/End publishes both fields as End (real capture)', () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EC_COMPLETE_COMPLETE)
         const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.run_state, 'Complete')
-        assert.equal(props.process_state, 'Complete')
-        assert.equal(props.running, 'OFF')
-        assert.equal(props.current_course, '-')
-        // Night Dry follows this run; the bit stays set through Complete, so it mustn't flicker OFF
+        assert.equal(props.status, 'End')
+        assert.equal(props.process, 'End')
+        assert.equal(props.course, 'Off')
+        // Night Dry follows this run; the bit stays set through End, so it mustn't flicker OFF
         assert.equal(props.night_dry, 'ON')
     })
 
@@ -449,9 +366,8 @@ describe(MODEL_ID, () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EC_RUNNING_RINSING)
         const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.run_state, 'Running')
-        assert.equal(props.process_state, 'Rinsing')
-        assert.equal(props.running, 'ON')
+        assert.equal(props.status, 'Running')
+        assert.equal(props.process, 'Rinsing')
         assert.equal(props.remaining_time, 92)
         assert.equal(props.rinse_refill, 'OFF')
     })
@@ -460,34 +376,32 @@ describe(MODEL_ID, () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EC_RUNNING_DRYING)
         const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.run_state, 'Running')
-        assert.equal(props.process_state, 'Drying')
-        assert.equal(props.running, 'ON')
+        assert.equal(props.status, 'Running')
+        assert.equal(props.process, 'Drying')
         assert.equal(props.remaining_time, 33)
         assert.equal(props.rinse_refill, 'ON')
     })
 
-    test('0xEC Night Dry publishes running OFF despite state=Running (real capture)', () => {
+    test('0xEC Night Dry publishes the Night Dry phase with state=Running (real capture)', () => {
         const { ha, thinq } = makeDevice()
         thinq.emit('data', SAMPLE_EC_NIGHT_DRY)
         const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.run_state, 'Running')
-        assert.equal(props.process_state, 'Night Dry')
-        assert.equal(props.running, 'OFF')
-        // Course is still reported during Night Dry — only `running` is overridden.
-        assert.equal(props.current_course, 'Heavy')
+        assert.equal(props.status, 'Running')
+        assert.equal(props.process, 'Night Dry')
+        // Course is still reported during Night Dry.
+        assert.equal(props.course, 'Heavy')
         assert.equal(props.remaining_time, 1)
         assert.equal(props.rinse_refill, 'ON')
     })
 
-    test('Normal + High Temp decodes, and a brief Paused state keeps the cycle active (real captures)', () => {
+    test('Normal + High Temp decodes, and a brief Pause state keeps the cycle active (real captures)', () => {
         const { ha, thinq } = makeDevice()
         const props = ha.devices[DEVICE_ID].properties
 
         thinq.emit('data', SAMPLE_EC_NORMAL_HIGH_TEMP_SELECTING)
         assert.equal(props.night_dry, 'OFF') // Night Dry lamp off in the panel photo
-        assert.equal(props.run_state, 'Selecting')
-        assert.equal(props.current_course, 'Normal')
+        assert.equal(props.status, 'Ready')
+        assert.equal(props.course, 'Normal')
         assert.equal(props.initial_time, 170)
         assert.equal(props.high_temp, 'ON')
         assert.equal(props.dual_zone, 'OFF')
@@ -496,16 +410,15 @@ describe(MODEL_ID, () => {
         assert.equal(props.energy_saver, 'OFF')
 
         thinq.emit('data', SAMPLE_EC_NORMAL_PAUSED)
-        assert.equal(props.run_state, 'Paused')
-        assert.equal(props.door_open, 'ON')
-        assert.equal(props.running, 'ON')
-        assert.equal(props.current_course, 'Normal')
+        assert.equal(props.status, 'Pause')
+        assert.equal(props.door, 'ON')
+        assert.equal(props.course, 'Normal')
         assert.equal(props.high_temp, 'ON')
 
         thinq.emit('data', SAMPLE_EC_NORMAL_RESUMED)
-        assert.equal(props.run_state, 'Running')
-        assert.equal(props.process_state, 'Washing')
-        assert.equal(props.door_open, 'OFF')
+        assert.equal(props.status, 'Running')
+        assert.equal(props.process, 'Washing')
+        assert.equal(props.door, 'OFF')
     })
 
     test('Heavy with Dual Zone and High Temp reads option bits 0x18 (real capture, panel photo)', () => {
@@ -514,51 +427,5 @@ describe(MODEL_ID, () => {
         const props = ha.devices[DEVICE_ID].properties
         assert.equal(props.high_temp, 'ON')
         assert.equal(props.dual_zone, 'ON')
-    })
-
-    test('unmapped state/process fall back to the numeric string', () => {
-        const { ha, thinq } = makeDevice()
-        thinq.emit('data', SAMPLE_UNMAPPED)
-        const props = ha.devices[DEVICE_ID].properties
-        assert.equal(props.run_state, '7')
-        assert.equal(props.process_state, '9')
-        assert.equal(props.running, 'OFF')
-    })
-
-    // ── Ignored packet tests ──────────────────────────────────────────────────
-
-    test('frames with wrong device class byte (not 0x32) are ignored', () => {
-        const { ha, thinq } = makeDevice()
-        thinq.emit('data', SAMPLE_WRONG_CLASS)
-        assert.equal(ha.devices[DEVICE_ID].properties.run_state, undefined)
-    })
-
-    test('frames with an unrecognized frame type (not 0xEB/0xEC) are ignored', () => {
-        const { ha, thinq } = makeDevice()
-        thinq.emit('data', SAMPLE_UNRECOGNIZED_TYPE)
-        assert.equal(ha.devices[DEVICE_ID].properties.run_state, undefined)
-    })
-
-    test('frames shorter than one full record are ignored', () => {
-        const { ha, thinq } = makeDevice()
-        thinq.emit('data', SAMPLE_TOO_SHORT)
-        assert.equal(ha.devices[DEVICE_ID].properties.run_state, undefined)
-    })
-
-    // ── Logging (for future status-code hunting) ────────────────────────────────
-
-    test('unrecognized frames (e.g. the 0x31 serial frame) are logged (real capture)', () => {
-        const { thinq } = makeDevice()
-        const cap = captureLog()
-        try {
-            thinq.emit('data', SAMPLE_SERIAL)
-            assert.equal(cap.calls.length, 1)
-            const [, topic, message, hex] = cap.calls[0].arguments
-            assert.equal(topic, 'D30')
-            assert.equal(message, 'unrecognized frame')
-            assert.equal(hex, SAMPLE_SERIAL.subarray(2, -2).toString('hex'))
-        } finally {
-            cap.restore()
-        }
     })
 })

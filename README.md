@@ -23,16 +23,19 @@ the second one is the model it is sold as.
 | RAC_056905_WW, RAC_0B0001_WW | LG DualCool family wall-mounted IDUs     | 💎 high level of support. What's missing are mostly some features of higher-end models and more diagnostic coverage |
 | WIN_056905_WW                | LW1822HRSM, Smart Window Air Conditioner | 👍 mostly working                                                                                                   |
 | POT_056905_WW                | LP1022FVSM, Portable Air Conditioner     | 👍 mostly working                                                                                                   |
+| RAC_056905_WW (ThinQ1)       | WH09SKN-18, DualCool IDU (QCA4002)       | 👍 mostly working                                                                                                   |
 
 #### Fridges
 
 | ThinQ model     | Appliance                                                  | Support                                                                                     |
 | --------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | 2REF11EIDA\_\_4 | LF28H8330S, Standard-Depth 4-Door French Door Refrigerator | 🫤 preliminary support                                                                      |
+| 2REF11EIDG\_\_4 | LRFXC2606S, 3-Door French Door Refrigerator                | 👍 setpoints, Ice Plus, Sabbath, Smart Learner, filters, water use                          |
 | 2RES1VE61NFA2   | GSJV70PZTE, Side by Side Refrigerator                      | 🫤 preliminary support                                                                      |
 | 2REB1GLVB1\_\_2 | GSB470BASZ, American Style Side by Side Refrigerator       | 🫤 preliminary support                                                                      |
 | 2RES1VE600FWC   | GA-B509CMUM                                                | 🫤 preliminary support                                                                      |
 | 2REF11EBIVPC4   | (model name unknown)                                       | 🫤 preliminary support: fridge/freezer temperature, door open, express freeze, Shabbat mode |
+| 2REFT1DIC4P_U   | GF-V700BSLC, InstaView Craft Ice French Door Refrigerator  | 🫤 preliminary support                                                                      |
 
 #### Washing machines
 
@@ -43,6 +46,7 @@ the second one is the model it is sold as.
 | F_V7_Y\_\_\_W.B_2QEUK                            | F4WV508S2E, Front-Loading Washing Machine        | 🫤 preliminary support       |
 | F_V8_Y\_\_\_W.B_2QEUK                            | F4WV709P1E, Front-Loading Washing Machine        | 🫤 preliminary support       |
 | F_V\_\_Y\_\_\_W.B_2QEUK                          | TW4V9RW9W                                        | 🫤 preliminary support       |
+| F_VB_Y\_\_\_W.B_2QEUK                            | F4WV710ATR, Front-Loading Washing Machine        | 🫤 preliminary support       |
 | F_C\_\_Y\_\_\_W.A\_\_QEUK                        | F4WV709P1, Front-Loading Washing Machine         | 👍 mostly working            |
 | F_V7_Y\_\_\_W.B\_\_QEUK                          | F2V5PS0W, Front-Load Washing Machine             | 👍 mostly working            |
 | VCDWL2QEUK                                       | F4X7511TWS, Front-Load Washing Machine           | 👍 mostly working            |
@@ -73,10 +77,12 @@ the second one is the model it is sold as.
 
 #### Dishwashers
 
-| ThinQ model | Appliance              | Support                      |
-| ----------- | ---------------------- | ---------------------------- |
-| D30         | LDT54788D              | 👍 mostly working, read-only |
-| H11         | DUE2BG.AKOR Dishwasher | 👍 mostly working            |
+| ThinQ model | Appliance                                         | Support                           |
+| ----------- | ------------------------------------------------- | --------------------------------- |
+| H11         | DUE2BG.AKOR Dishwasher                            | 👍 mostly working                 |
+| N17         | LDNPQ445S                                         | 👍 mostly working                 |
+| D0211       | DB365TXS / DBC435TSL.AASQEIS, Built-in Dishwasher | 🫤 preliminary support, read-only |
+| D30         | LDT54788D                                         | 👍 mostly working, read-only      |
 
 D30 support started from [Stinocon's D0211 dishwasher fork](https://github.com/Stinocon/rethink-dishwasher).
 

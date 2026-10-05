@@ -113,7 +113,7 @@ export function app(ha: HA_bridge, manager: DeviceManager, bridge: Bridge | unde
                 model: meta.modelId,
                 deviceType: meta.deviceType,
                 platform: dev.platform,
-                mapped: ha.haDevices.has(id),
+                mapped: dev.managed,
                 bridgeState: bridge ? bridge.status(id) : 'disabled',
             }
         }
@@ -268,13 +268,13 @@ export function app(ha: HA_bridge, manager: DeviceManager, bridge: Bridge | unde
             let injectFlag = false
             let device: AnyDevice | undefined
             const onDeviceRx = (arg: Buffer) => {
-                safeSend(ws, JSON.stringify({ rx: arg.toString('hex'), injected: injectFlag }))
+                safeSend(ws, JSON.stringify({ rx: arg.toString('hex'), injected: injectFlag, type: 'packet' }))
             }
 
-            const onDeviceTx = (arg: Buffer | object) => {
+            const onDeviceTx = (type: 'packet' | 'ack', arg: Buffer | object) => {
                 if (Buffer.isBuffer(arg))
-                    safeSend(ws, JSON.stringify({ tx: arg.toString('hex'), injected: injectFlag }))
-                else safeSend(ws, JSON.stringify({ tx: JSON.stringify(arg), injected: injectFlag }))
+                    safeSend(ws, JSON.stringify({ tx: arg.toString('hex'), injected: injectFlag, type }))
+                else safeSend(ws, JSON.stringify({ tx: JSON.stringify(arg), injected: injectFlag, type }))
             }
 
             const checkDevicePresence = () => {

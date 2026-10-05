@@ -11,13 +11,14 @@ import { Metadata } from '../thinq'
 
 type DeviceEvents = {
     data: (packet: Buffer) => void
-    sendData: (buf: Buffer) => void
+    sendData: (type: 'packet' | 'ack', buf: Buffer) => void
     close: () => void
 }
 
 export class Device extends TypedEmitter<DeviceEvents> {
     // this could be a stream but why bother...
     readonly platform = 'thinq2'
+    managed: boolean = false // set to true if any rethink handler is assigned to the device
 
     constructor(
         readonly broker: Broker,
@@ -44,8 +45,14 @@ export class Device extends TypedEmitter<DeviceEvents> {
     }
 
     send_packet(buf: Buffer) {
-        this.emit('sendData', buf)
+        this.emit('sendData', 'packet', buf)
         this.send('packet', 1, buf.toString('hex').toUpperCase())
+    }
+
+    // Delivery acks travel under their own MQTT command, not `packet`.
+    send_ack(buf: Buffer) {
+        this.emit('sendData', 'ack', buf)
+        this.send('ack', 1, buf.toString('hex').toUpperCase())
     }
 }
 
